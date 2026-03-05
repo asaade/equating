@@ -318,16 +318,22 @@ analyze_distractor_efficiency <- function(raw_df, scored_df, items) {
     opts <- rownames(tbl)
 
     # Correlación P-Biserial por Opción (Opción elegida vs Score Total)
-    rbis_vec <- numeric(length(opts))
-    for (k in seq_along(opts)) {
-      # Dummy variable: 1 si eligió esta opción, 0 si no
-      bin_opt <- as.integer(resp_vec == opts[k])
+    # Vectorized computation replaces inner loop over options
+    dummy_mat <- vapply(opts, function(o) as.integer(resp_vec == o), integer(length(resp_vec)), USE.NAMES = FALSE)
 
-      if (sd(bin_opt, na.rm = TRUE) == 0) {
-        rbis_vec[k] <- 0
-      } else {
-        res <- try(cor(bin_opt, total_score, use = "pairwise.complete.obs"), silent = TRUE)
-        rbis_vec[k] <- if (inherits(res, "try-error")) NA else res
+    # Asegurar que sea matriz incluso si solo hay 1 fila
+    if (!is.matrix(dummy_mat)) {
+      dummy_mat <- matrix(dummy_mat, ncol = length(opts))
+    }
+
+    res_cor <- suppressWarnings(cor(dummy_mat, total_score, use = "pairwise.complete.obs"))
+    rbis_vec <- as.vector(res_cor)
+
+    if (any(is.na(rbis_vec))) {
+      for (k in which(is.na(rbis_vec))) {
+        if (sd(dummy_mat[, k], na.rm = TRUE) == 0) {
+          rbis_vec[k] <- 0
+        }
       }
     }
 
