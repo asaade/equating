@@ -136,7 +136,7 @@ log_msg <- function(level, msg, ctx = NULL) {
     log_fun(logger, formatted_msg)
   }
 
-  if (level == "fatal") stop(paste("FATAL ERROR:", msg), call. = FALSE)
+  if (level == "fatal") stop("FATAL ERROR: A system error occurred. Please check the logs for details.", call. = FALSE)
 }
 
 # Wrappers públicos
