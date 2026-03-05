@@ -76,16 +76,23 @@ audit_score_impact <- function(final_scores, raw_dat = NULL, eq_results = NULL, 
   if (!is.null(eq_results) && !is.null(eq_results$audit_critical)) {
     cuts <- eq_results$audit_critical
 
-    # --- FIX: Detección segura de columnas ---
-    # Intentamos mapear las columnas disponibles a LABEL y VALUE
+    # --- FIX: Detección segura de columnas (Case-Insensitive) ---
+    # Mapeamos candidatos a las columnas reales de audit_critical (priorizando engine v2)
+    label_candidates <- c("TARGET_CUT_RAW_REF", "LABEL", "TARGET_CUT_REF", "NOTE")
+    value_candidates <- c("EQUATED_AT_CUT", "EQUATED", "EST_RAW_CUT", "CUT_SCORE")
 
-    # Buscar etiqueta
-    valid_labels <- intersect(c("LABEL", "TARGET_CUT_REF", "NOTE"), names(cuts))
-    col_label <- if (length(valid_labels) > 0) valid_labels[1] else NULL
+    col_names <- names(cuts)
+    col_names_up <- toupper(col_names)
 
-    # Buscar valor
-    valid_values <- intersect(c("EQUATED", "EST_RAW_CUT", "CUT_SCORE"), names(cuts))
-    col_value <- if (length(valid_values) > 0) valid_values[1] else NULL
+    # Buscar etiqueta por prioridad
+    match_label <- match(label_candidates, col_names_up)
+    match_label <- match_label[!is.na(match_label)]
+    col_label <- if (length(match_label) > 0) col_names[match_label[1]] else NULL
+
+    # Buscar valor por prioridad
+    match_value <- match(value_candidates, col_names_up)
+    match_value <- match_value[!is.na(match_value)]
+    col_value <- if (length(match_value) > 0) col_names[match_value[1]] else NULL
 
     if (!is.null(col_label) && !is.null(col_value)) {
       cat(paste0(pad_str("PUNTO DE CORTE", 25), pad_str("SCORE REQ.", 12), pad_str("APROBADOS (N)", 15), "TASA (%)\n"))
