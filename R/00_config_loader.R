@@ -28,7 +28,7 @@ load_project_config <- function(yaml_path = "config.yaml", defs_path = "R/00_con
   defaults <- get_default_config()
 
   if (!file.exists(yaml_path)) stop(paste("FATAL: Archivo de configuración no encontrado:", yaml_path))
-  user_config <- yaml::read_yaml(yaml_path)
+  user_config <- yaml::read_yaml(yaml_path, eval.expr = FALSE)
 
   # 2. FUSIÓN RECURSIVA (Deep Merge)
   # El usuario solo sobreescribe lo necesario; el resto se protege con defaults.
