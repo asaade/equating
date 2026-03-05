@@ -80,36 +80,44 @@ audit_score_impact <- function(final_scores, raw_dat = NULL, eq_results = NULL, 
     # Intentamos mapear las columnas disponibles a LABEL y VALUE
 
     # Buscar etiqueta
-    valid_labels <- intersect(c("LABEL", "TARGET_CUT_REF", "NOTE"), names(cuts))
+    valid_labels <- intersect(c("LABEL", "TARGET_CUT_RAW_REF", "TARGET_CUT_REF", "NOTE"), names(cuts))
     col_label <- if (length(valid_labels) > 0) valid_labels[1] else NULL
 
     # Buscar valor
-    valid_values <- intersect(c("EQUATED", "EST_RAW_CUT", "CUT_SCORE"), names(cuts))
+    valid_values <- intersect(c("EQUATED_AT_CUT", "EQUATED", "EST_RAW_CUT", "CUT_SCORE"), names(cuts))
     col_value <- if (length(valid_values) > 0) valid_values[1] else NULL
 
+    # Validar que tenemos columnas y que la columna de puntuación existe
+    score_col <- "Eq_Global_CTT"
+    has_scores <- score_col %in% names(final_scores)
+
     if (!is.null(col_label) && !is.null(col_value)) {
-      cat(paste0(pad_str("PUNTO DE CORTE", 25), pad_str("SCORE REQ.", 12), pad_str("APROBADOS (N)", 15), "TASA (%)\n"))
-      cat(paste0(strrep("-", 70), "\n"))
+      if (has_scores) {
+        cat(paste0(pad_str("PUNTO DE CORTE", 25), pad_str("SCORE REQ.", 12), pad_str("APROBADOS (N)", 15), "TASA (%)\n"))
+        cat(paste0(strrep("-", 70), "\n"))
 
-      scores <- final_scores$Eq_Global_CTT
+        scores <- final_scores[[score_col]]
 
-      # Extraer pares únicos para evitar repeticiones por forma
-      cuts_unique <- unique(cuts[, c(col_label, col_value)])
-      names(cuts_unique) <- c("LBL", "VAL")
+        # Extraer pares únicos para evitar repeticiones por forma
+        cuts_unique <- unique(cuts[, c(col_label, col_value)])
+        names(cuts_unique) <- c("LBL", "VAL")
 
-      for (i in 1:nrow(cuts_unique)) {
-        cut_label <- as.character(cuts_unique$LBL[i])
-        cut_val <- as.numeric(cuts_unique$VAL[i])
+        for (i in 1:nrow(cuts_unique)) {
+          cut_label <- as.character(cuts_unique$LBL[i])
+          cut_val <- as.numeric(cuts_unique$VAL[i])
 
-        n_pass <- sum(scores >= cut_val, na.rm = TRUE)
-        pct_pass <- (n_pass / length(scores)) * 100
+          n_pass <- sum(scores >= cut_val, na.rm = TRUE)
+          pct_pass <- (n_pass / length(scores)) * 100
 
-        cat(paste0(
-          pad_str(cut_label, 25),
-          pad_str(sprintf("%.2f", cut_val), 12),
-          pad_str(n_pass, 15),
-          sprintf("%.1f%%", pct_pass), "\n"
-        ))
+          cat(paste0(
+            pad_str(cut_label, 25),
+            pad_str(sprintf("%.2f", cut_val), 12),
+            pad_str(n_pass, 15),
+            sprintf("%.1f%%", pct_pass), "\n"
+          ))
+        }
+      } else {
+        cat(paste0("No se encontró la columna de puntuaciones '", score_col, "' para calcular tasas.\n"))
       }
     } else {
       cat("No se pudieron identificar las columnas de etiqueta/valor en la tabla de cortes (audit_critical).\n")
