@@ -31,6 +31,7 @@ normalize_config <- function(cfg) {
   if (is.null(cfg$smoothing$bias_skew_max)) cfg$smoothing$bias_skew_max <- 0.20
   if (is.null(cfg$smoothing$bias_kurt_max)) cfg$smoothing$bias_kurt_max <- 0.40
   if (is.null(cfg$smoothing$cv_folds)) cfg$smoothing$cv_folds <- 5
+  if (is.null(cfg$smoothing$ic_criterion)) cfg$smoothing$ic_criterion <- "AIC"
 
   return(cfg)
 }
@@ -226,12 +227,10 @@ determine_max_degrees <- function(n_total, is_bivariate, config) {
 }
 
 ## Lleva a cabo el suavizado de la distribución de puntuaciones
-## Utiliza el criterio BIC (revizar: Holland recomienda AIC)
+## Utiliza el criterio especificado en config$smoothing$ic_criterion (AIC o BIC)
 ## Solo aplica a modelos no lineales (p. ej. Equipercentil)
-## TODOs:
-## 1. Confirmar lógica psicométrica de la selección
-## 2. Verificar que devuelve información completa para reproducir el proceso
-## 3. Revisar que el proceso sea correcto y eficiente (algoritmos, orden de comprobaciones)
+## Se ha actualizado para calcular tanto AIC como BIC, y permitir la selección
+## dinámica del modelo parsimonioso.
 ## PRECAUCIÓN: Los parámetros de la función equate::presmoothing cambian radicalmente su comportamiento.
 ##             Se debe ser cuidadoso para no romper la lógica.
 optimize_loglinear_smoothing <- function(ft, n_total, config, scale_id = "UNKNOWN", form_tag = "UNKNOWN") {
@@ -264,7 +263,7 @@ optimize_loglinear_smoothing <- function(ft, n_total, config, scale_id = "UNKNOW
     if (!inherits(model, "glm") || (!is.null(model$converged) && !model$converged)) {
       history_list[[i]] <- data.frame(
         ModelID = i, Formula = NA, Params_K = NA,
-        BIC = Inf, Wiggle = NA, G2 = NA, P_Val = NA,
+        AIC = Inf, BIC = Inf, Wiggle = NA, G2 = NA, P_Val = NA,
         Status = "FAIL_CONVERGENCE", stringsAsFactors = FALSE
       )
       next
@@ -278,6 +277,7 @@ optimize_loglinear_smoothing <- function(ft, n_total, config, scale_id = "UNKNOW
     k <- model$rank
     df_resid <- model$df.residual
     bic <- g2 + (k * log(n_total))
+    aic <- g2 + (2 * k)
 
     # P-Value robustness: Si df_resid es 0 o muy bajo, o g2 es muy bajo, p_val tiende a 1.
     p_val <- if (!is.null(df_resid) && df_resid > 0) (1 - pchisq(g2, df_resid)) else 0
@@ -298,7 +298,7 @@ optimize_loglinear_smoothing <- function(ft, n_total, config, scale_id = "UNKNOW
 
     history_list[[i]] <- data.frame(
       ModelID = i, Formula = paste(deparse(formula(model)), collapse = " "),
-      Params_K = k, BIC = round(bic, 2), Wiggle = round(wiggle, 5),
+      Params_K = k, AIC = round(aic, 2), BIC = round(bic, 2), Wiggle = round(wiggle, 5),
       G2 = round(g2, 2), P_Val = round(p_val, 4),
       Status = status, stringsAsFactors = FALSE
     )
@@ -311,10 +311,15 @@ optimize_loglinear_smoothing <- function(ft, n_total, config, scale_id = "UNKNOW
     return(list(success = FALSE, reason = "NO_VALID_SMOOTHING", history = history_df))
   }
 
-  min_bic_val <- min(valid_candidates$BIC)
+  ic_crit <- toupper(config$smoothing$ic_criterion %||% "AIC")
+  if (!ic_crit %in% c("AIC", "BIC")) {
+    ic_crit <- "AIC"
+  }
+
+  min_ic_val <- min(valid_candidates[[ic_crit]])
   tolerance <- config$smoothing$ic_tolerance %||% 2.0
-  parsimony_set <- valid_candidates[valid_candidates$BIC <= (min_bic_val + tolerance), ]
-  best_row <- parsimony_set[order(parsimony_set$Params_K, parsimony_set$BIC), ][1, ]
+  parsimony_set <- valid_candidates[valid_candidates[[ic_crit]] <= (min_ic_val + tolerance), ]
+  best_row <- parsimony_set[order(parsimony_set$Params_K, parsimony_set[[ic_crit]]), ][1, ]
 
   winner_obj <- model_list[[best_row$ModelID]]
 
@@ -326,8 +331,8 @@ optimize_loglinear_smoothing <- function(ft, n_total, config, scale_id = "UNKNOW
   list(
     success = TRUE,
     ft = final_ft,
-    info = sprintf("LogLin(K:%d|BIC:%.1f|P:%.3f)", best_row$Params_K, best_row$BIC, best_row$P_Val),
-    metrics = list(k = best_row$Params_K, bic = best_row$BIC, wiggle = best_row$Wiggle, p_val = best_row$P_Val),
+    info = sprintf("LogLin(K:%d|%s:%.1f|P:%.3f)", best_row$Params_K, ic_crit, best_row[[ic_crit]], best_row$P_Val),
+    metrics = list(k = best_row$Params_K, aic = best_row$AIC, bic = best_row$BIC, wiggle = best_row$Wiggle, p_val = best_row$P_Val),
     model_meta = list(coefficients = coef(winner_obj), formula = best_row$Formula, model_id = best_row$ModelID),
     history = history_df
   )
