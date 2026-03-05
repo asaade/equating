@@ -341,21 +341,23 @@ analyze_distractor_efficiency <- function(raw_df, scored_df, items) {
     props <- prop.table(tbl, margin = 2) # Por columna (Grupo)
     prop_total <- table(resp_vec[valid_mask]) / sum(valid_mask)
 
-    # Construcción de fila
-    df_itm <- data.frame(
-      ITEM = itm,
-      OPTION = opts,
-      PROP = as.numeric(prop_total),
-      PROP_LOW = if ("Low" %in% colnames(props)) props[, "Low"] else NA,
-      PROP_MID = if ("Mid" %in% colnames(props)) props[, "Mid"] else NA,
-      PROP_HIGH = if ("High" %in% colnames(props)) props[, "High"] else NA,
+    # Construcción de lista (más eficiente que data.frame en loop)
+    results_list[[itm]] <- list(
+      ITEM      = itm,
+      OPTION    = opts,
+      PROP      = as.numeric(prop_total),
+      PROP_LOW  = if ("Low" %in% colnames(props)) as.numeric(props[, "Low"]) else NA_real_,
+      PROP_MID  = if ("Mid" %in% colnames(props)) as.numeric(props[, "Mid"]) else NA_real_,
+      PROP_HIGH = if ("High" %in% colnames(props)) as.numeric(props[, "High"]) else NA_real_,
       R_BIS_OPT = round(rbis_vec, 3)
     )
-
-    results_list[[itm]] <- df_itm
   }
 
-  do.call(rbind, results_list)
+  if (length(results_list) == 0) {
+    return(NULL)
+  }
+
+  dplyr::bind_rows(results_list)
 }
 
 # ==============================================================================
