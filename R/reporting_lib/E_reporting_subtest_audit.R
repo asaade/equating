@@ -25,43 +25,7 @@ print_section <- function(title) {
   cat(paste0(strrep("-", 80), "\n"))
 }
 
-# ==============================================================================
-# FUNCIÓN PRINCIPAL
-# ==============================================================================
-audit_subtest_analysis <- function(final_scores, ctt_stats, eq_results = NULL, meta, raw_dat = NULL, base_dir, config) {
-  check_config <- isTRUE(config$scoring$include_subscores)
-  check_col <- "SUBTEST" %in% names(meta)
-
-  if (!check_config) {
-    debug("Módulo E: Omitido por configuración (include_subscores = false).")
-    return(NULL)
-  }
-
-  if (!check_col) {
-    warn("Módulo E: Omitido. Se solicitó análisis pero columna 'SUBTEST' falta en metadata.")
-    return(NULL)
-  }
-
-  if (is.null(final_scores)) {
-    return(NULL)
-  }
-
-  out_dir <- file.path(base_dir)
-  if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
-
-  forma_id <- unique(final_scores$FORMA)[1]
-  if (is.na(forma_id)) forma_id <- "GLOBAL"
-  report_file <- file.path(out_dir, paste0("AUDIT_SUBTESTS_DETAIL_", forma_id, ".txt"))
-
-  sink(report_file)
-  on.exit(sink())
-
-  print_header(paste("ANÁLISIS DE SUBTESTS (DOMINIOS): FORMA", forma_id))
-  cat(paste0("N Sustentantes: ", nrow(final_scores), "\n"))
-
-  # 1. CALIDAD DE ÍTEMS AGREGADA
-  print_section("1. CALIDAD PSICOMÉTRICA POR DOMINIO (ITEMS)")
-
+analyze_item_quality <- function(ctt_stats, meta) {
   # Preparación de datos de ítems
   if (!"SUBTEST" %in% names(ctt_stats)) {
     item_data <- ctt_stats |>
@@ -87,7 +51,7 @@ audit_subtest_analysis <- function(final_scores, ctt_stats, eq_results = NULL, m
   ))
   cat(paste0(strrep("-", 70), "\n"))
 
-  for (i in 1:nrow(sub_stats)) {
+  for (i in seq_len(nrow(sub_stats))) {
     row <- sub_stats[i, ]
     quality <- "OK"
     if (row$Mean_Pbis < 0.20) quality <- "BAJA DISC."
@@ -100,14 +64,9 @@ audit_subtest_analysis <- function(final_scores, ctt_stats, eq_results = NULL, m
       pad_str(row$Items_Low_Disc, 8), quality, "\n"
     ))
   }
+}
 
-  # Identificar columnas de subtests (Raw_ y Eq_)
-  raw_cols <- grep("^Raw_", names(final_scores), value = TRUE)
-  raw_cols <- setdiff(raw_cols, "Raw_Global_CTT") # Excluir global
-
-  # 2. VALIDEZ DISCRIMINANTE (CORRELACIONES) - NUEVO
-  print_section("2. VALIDEZ DISCRIMINANTE (CORRELACIONES INTER-SUBTEST)")
-
+analyze_discriminant_validity <- function(final_scores, raw_cols) {
   if (length(raw_cols) > 1) {
     # Usamos puntuaciones equiparadas para la correlación si existen, sino crudas
     eq_cols_target <- gsub("Raw_", "Eq_", raw_cols)
@@ -133,10 +92,9 @@ audit_subtest_analysis <- function(final_scores, ctt_stats, eq_results = NULL, m
   } else {
     cat("Menos de 2 subtests detectados. No aplica análisis de correlación.\n")
   }
+}
 
-  # 3. IMPACTO DEL EQUIPARAMIENTO
-  print_section("3. IMPACTO DEL EQUIPARAMIENTO (DELTAS POR SUBTEST)")
-
+analyze_equating_impact <- function(final_scores, raw_cols) {
   if (length(raw_cols) > 0) {
     cat(paste0(
       pad_str("SUBTEST", 20), pad_str("RAW_MN", 10), pad_str("EQ_MN", 10),
@@ -169,8 +127,9 @@ audit_subtest_analysis <- function(final_scores, ctt_stats, eq_results = NULL, m
   } else {
     cat("No se detectaron columnas pareadas (Raw/Eq) para subtests.\n")
   }
+}
 
-  # 4. EQUIDAD POR SUBTEST (NUEVO)
+analyze_subtest_equity <- function(final_scores, raw_dat, raw_cols) {
   if (!is.null(raw_dat) && length(raw_cols) > 0) {
     print_section("4. DETECCIÓN DE SESGO ESPECÍFICO (EQUIDAD POR DOMINIO)")
 
@@ -211,10 +170,9 @@ audit_subtest_analysis <- function(final_scores, ctt_stats, eq_results = NULL, m
       }
     }
   }
+}
 
-  # 5. AUDITORÍA TÉCNICA DEL ENLACE
-  print_section("5. CALIDAD TÉCNICA DEL ENLACE (ANCLAS POR SUBTEST)")
-
+analyze_linkage_quality <- function(eq_results, raw_cols) {
   if (!is.null(eq_results) && !is.null(eq_results$topology_edges)) {
     # ... (Mismo código de la versión anterior para Topology)
     # Lo mantenemos para asegurar la visión completa
@@ -248,6 +206,64 @@ audit_subtest_analysis <- function(final_scores, ctt_stats, eq_results = NULL, m
   } else {
     cat("Objeto 'eq_results' no disponible o sin topología detallada.\n")
   }
+}
+
+# ==============================================================================
+# FUNCIÓN PRINCIPAL
+# ==============================================================================
+audit_subtest_analysis <- function(final_scores, ctt_stats, eq_results = NULL, meta, raw_dat = NULL, base_dir, config) {
+  check_config <- isTRUE(config$scoring$include_subscores)
+  check_col <- "SUBTEST" %in% names(meta)
+
+  if (!check_config) {
+    debug("Módulo E: Omitido por configuración (include_subscores = false).")
+    return(NULL)
+  }
+
+  if (!check_col) {
+    warn("Módulo E: Omitido. Se solicitó análisis pero columna 'SUBTEST' falta en metadata.")
+    return(NULL)
+  }
+
+  if (is.null(final_scores)) {
+    return(NULL)
+  }
+
+  out_dir <- file.path(base_dir)
+  if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+
+  forma_id <- unique(final_scores$FORMA)[1]
+  if (is.na(forma_id)) forma_id <- "GLOBAL"
+  report_file <- file.path(out_dir, paste0("AUDIT_SUBTESTS_DETAIL_", forma_id, ".txt"))
+
+  sink(report_file)
+  on.exit(sink())
+
+  print_header(paste("ANÁLISIS DE SUBTESTS (DOMINIOS): FORMA", forma_id))
+  cat(paste0("N Sustentantes: ", nrow(final_scores), "\n"))
+
+  # Identificar columnas de subtests (Raw_ y Eq_)
+  raw_cols <- grep("^Raw_", names(final_scores), value = TRUE)
+  raw_cols <- setdiff(raw_cols, "Raw_Global_CTT") # Excluir global
+
+  # 1. CALIDAD DE ÍTEMS AGREGADA
+  print_section("1. CALIDAD PSICOMÉTRICA POR DOMINIO (ITEMS)")
+  analyze_item_quality(ctt_stats, meta)
+
+  # 2. VALIDEZ DISCRIMINANTE (CORRELACIONES) - NUEVO
+  print_section("2. VALIDEZ DISCRIMINANTE (CORRELACIONES INTER-SUBTEST)")
+  analyze_discriminant_validity(final_scores, raw_cols)
+
+  # 3. IMPACTO DEL EQUIPARAMIENTO
+  print_section("3. IMPACTO DEL EQUIPARAMIENTO (DELTAS POR SUBTEST)")
+  analyze_equating_impact(final_scores, raw_cols)
+
+  # 4. EQUIDAD POR SUBTEST (NUEVO)
+  analyze_subtest_equity(final_scores, raw_dat, raw_cols)
+
+  # 5. AUDITORÍA TÉCNICA DEL ENLACE
+  print_section("5. CALIDAD TÉCNICA DEL ENLACE (ANCLAS POR SUBTEST)")
+  analyze_linkage_quality(eq_results, raw_cols)
 
   cat("\n>>> FIN DEL REPORTE E <<<\n")
   debug(paste("Reporte de Subtests generado:", report_file))
