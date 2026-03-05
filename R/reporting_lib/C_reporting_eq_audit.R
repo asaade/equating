@@ -147,22 +147,35 @@ audit_03_topology <- function(tables) {
     pad_str("METHOD_CHAIN", 35), " | ", pad_str("FLAGS", 20), "\n"
   ))
   cat(paste0(strrep("-", 100), "\n"))
+
   if (!is.null(tables)) {
     summ_topo <- unique(tables[, c("SOURCE_FORM", "METHOD", "BIAS_NET")])
-    for (i in 1:nrow(summ_topo)) {
-      src <- summ_topo$SOURCE_FORM[i]
-      meth <- summ_topo$METHOD[i]
-      bias <- summ_topo$BIAS_NET[i]
-      path_type <- if (grepl("CHAIN", meth)) "MULTI" else "DIRECT"
-      flag <- ""
-      if (abs(bias) > 2.0) flag <- "HIGH BIAS ACCUM."
-      if (grepl("IDENTITY", meth)) flag <- "IDENTITY FALLBACK"
-      meth_disp <- gsub("CHAIN\\[\\d+\\]: ", "", meth)
-      if (nchar(meth_disp) > 33) meth_disp <- paste0(substr(meth_disp, 1, 30), "...")
-      cat(paste0(
-        pad_str(src, 12), pad_str(path_type, 10), fmt_num(bias, 3, 9), " | ",
-        pad_str(meth_disp, 35), " | ", pad_str(flag, 20), "\n"
-      ))
+    if (nrow(summ_topo) > 0) {
+      # Vectorización de lógica de topología
+      path_type <- ifelse(grepl("CHAIN", summ_topo$METHOD), "MULTI", "DIRECT")
+
+      flag <- rep("", nrow(summ_topo))
+      idx_high_bias <- abs(summ_topo$BIAS_NET) > 2.0
+      idx_identity <- grepl("IDENTITY", summ_topo$METHOD)
+      flag[idx_high_bias] <- "HIGH BIAS ACCUM."
+      flag[idx_identity] <- "IDENTITY FALLBACK"
+
+      meth_disp <- gsub("CHAIN\\[\\d+\\]: ", "", summ_topo$METHOD)
+      too_long <- nchar(meth_disp) > 33
+      meth_disp[too_long] <- paste0(substr(meth_disp[too_long], 1, 30), "...")
+
+      # Construcción vectorial de líneas
+      lines <- paste0(
+        pad_str(summ_topo$SOURCE_FORM, 12),
+        pad_str(path_type, 10),
+        fmt_num(summ_topo$BIAS_NET, 3, 9),
+        " | ",
+        pad_str(meth_disp, 35),
+        " | ",
+        pad_str(flag, 20),
+        "\n"
+      )
+      cat(paste(lines, collapse = ""))
     }
   }
 }
