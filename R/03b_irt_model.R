@@ -304,13 +304,16 @@ generate_irt_scores <- function(mod, irt_matrix, source_df, config) {
   E_L <- numeric(n_people)
   Var_L <- numeric(n_people)
 
+  mod_items <- mirt::extract.mirt(mod, 'pars')
+  theta_matrix <- as.matrix(theta_vals)
+
   for (i in seq_len(ncol(irt_matrix_numeric))) {
     resp <- irt_matrix_numeric[, i]
     valid_idx <- which(!is.na(resp))
     if (length(valid_idx) == 0) next
 
-    item_obj <- mirt::extract.item(mod, i)
-    theta_sub <- theta_vals[valid_idx]
+    item_obj <- mod_items[[i]]
+    theta_sub <- theta_matrix[valid_idx, , drop = FALSE]
     P <- mirt::probtrace(item_obj, theta_sub)
     P <- pmax(P, 1e-16)
     log_P <- log(P)
