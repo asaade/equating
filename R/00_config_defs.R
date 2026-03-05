@@ -76,6 +76,7 @@ get_default_config <- function() {
     smoothing = list(
       max_iter = 200,
       ic_tolerance = 2.0,
+      ic_criterion = "AIC",
       wiggle_density_max = 0.1,
       max_skew_diff = 0.5,
       max_kurt_diff = 1.0,

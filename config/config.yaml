@@ -78,7 +78,7 @@ historical_anchoring:
   ctt_equating_table: "data/input/historical_ctt_equating.csv"
 
 dif:
-  enabled: false
+  enabled: true
   group_col: "SEXO"
   reference_group: "F"
   focal_group: "M"
