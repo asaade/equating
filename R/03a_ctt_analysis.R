@@ -157,21 +157,53 @@ calculate_item_stats <- function(item_mat) {
 
   # P_BIS (Discriminación Punto Biserial)
   total_scores <- rowSums(item_mat, na.rm = TRUE)
-  p_bis <- numeric(ncol(item_mat))
+
+  # Mascara de validos (no NAs)
+  m <- !is.na(item_mat)
+  n <- colSums(m)
+
+  # item_mat con NAs reemplazados por 0 para sumas y productos
+  x <- item_mat
+  x[!m] <- 0
+
+  # total_scores propagado por columnas usando el reciclamiento de R
+  # multiplicamos por m para que los NAs en el item original se vuelvan 0 aqui
+  t_m <- total_scores * m
+
+  # rest_score
+  y <- t_m - x
+
+  # Sumas
+  sum_x <- colSums(x)
+  sum_y <- colSums(y)
+
+  # Medias (protegidas contra div by 0 si n=0)
+  mean_x <- ifelse(n > 0, sum_x / n, 0)
+  mean_y <- ifelse(n > 0, sum_y / n, 0)
+
+  # Sumas de Cuadrados y Productos Cruzados
+  sum_x2 <- colSums(x^2)
+  sum_y2 <- colSums(y^2)
+  sum_xy <- colSums(x * y)
+
+  # Varianzas y Covarianzas muestrales (protegidas contra n < 2)
+  var_x <- ifelse(n > 1, (sum_x2 - n * mean_x^2) / (n - 1), 0)
+  var_y <- ifelse(n > 1, (sum_y2 - n * mean_y^2) / (n - 1), 0)
+  cov_xy <- ifelse(n > 1, (sum_xy - n * mean_x * mean_y) / (n - 1), 0)
+
+  sd_x <- sqrt(pmax(var_x, 0))
+  sd_y <- sqrt(pmax(var_y, 0))
+
+  p_bis <- rep(0, ncol(x))
   names(p_bis) <- colnames(item_mat)
 
-  for (i in seq_len(ncol(item_mat))) {
-    # Correlación Ítem-Total Corregida (excluyendo el ítem)
-    rest_score <- total_scores - item_mat[, i]
+  # Solo calculamos correlación donde ambos sd son > 0 y n > 1
+  valid_cor <- sd_x > 0 & sd_y > 0 & n > 1
+  p_bis[valid_cor] <- cov_xy[valid_cor] / (sd_x[valid_cor] * sd_y[valid_cor])
 
-    # Evitar error si varianza es 0 (todos contestaron bien o mal)
-    if (sd(item_mat[, i], na.rm = TRUE) == 0 || sd(rest_score, na.rm = TRUE) == 0) {
-      p_bis[i] <- 0
-    } else {
-      res <- try(cor(item_mat[, i], rest_score, use = "pairwise.complete.obs"), silent = TRUE)
-      p_bis[i] <- if (inherits(res, "try-error")) NA else res
-    }
-  }
+  # Evitar problemas de precision (> 1 o < -1) y NAs
+  p_bis[is.na(p_bis)] <- 0
+  p_bis <- pmax(pmin(p_bis, 1), -1)
 
   data.frame(
     ITEM = colnames(item_mat),
