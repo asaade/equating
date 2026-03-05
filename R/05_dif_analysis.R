@@ -50,13 +50,10 @@ prepare_dif_data <- function(response_df, demographic_df, col_group, ref_grp, fo
   return(df_proc)
 }
 
-#' Calcula estadísticas Mantel-Haenszel
+#' Crea estratos de puntaje (Bin) dinámicamente
 #' @param current_df Dataframe actual con score.
-#' @param items_to_test Ítems a analizar.
-#' @param ref_grp Grupo de referencia.
-#' @param foc_grp Grupo focal.
-#' @return Dataframe con resultados MH.
-calculate_mh_stats <- function(current_df, items_to_test, ref_grp, foc_grp) {
+#' @return Dataframe con columna Bin y sin NAs en Bin.
+create_score_strata <- function(current_df) {
   # Estratificación dinámica
   n_scores <- length(unique(current_df$SCORE))
   if (n_scores > 20) {
@@ -70,67 +67,88 @@ calculate_mh_stats <- function(current_df, items_to_test, ref_grp, foc_grp) {
     current_df$Bin <- as.factor(current_df$SCORE)
   }
 
-  current_df <- current_df |> filter(!is.na(Bin))
-  res_list <- list()
+  current_df |> filter(!is.na(Bin))
+}
 
-  for (item in items_to_test) {
-    # Evitar items constantes (todos 0 o todos 1)
-    if (var(current_df[[item]], na.rm = TRUE) == 0) next
+#' Calcula estadísticas Mantel-Haenszel por ítem
+#' @param current_df Dataframe actual con score y Bin.
+#' @param item Ítem a analizar.
+#' @param ref_grp Grupo de referencia.
+#' @param foc_grp Grupo focal.
+#' @return Dataframe con 1 fila de resultados MH o NULL.
+compute_item_mh_stats <- function(current_df, item, ref_grp, foc_grp) {
+  # Evitar items constantes (todos 0 o todos 1)
+  if (var(current_df[[item]], na.rm = TRUE) == 0) return(NULL)
 
-    # Tabla de contingencia por estrato
-    # Estructura: Bin | Group | R_correct | N_total
-    agg <- current_df |>
-      group_by(Bin, GROUP) |>
-      summarise(
-        R = sum(!!sym(item), na.rm = TRUE),
-        N = n(),
-        .groups = "drop"
+  # Tabla de contingencia por estrato
+  # Estructura: Bin | Group | R_correct | N_total
+  agg <- current_df |>
+    group_by(Bin, GROUP) |>
+    summarise(
+      R = sum(!!sym(item), na.rm = TRUE),
+      N = n(),
+      .groups = "drop"
+    ) |>
+    pivot_wider(names_from = GROUP, values_from = c(R, N), values_fill = 0)
+
+  # Nombres dinámicos según grupos
+  cr_R <- paste0("R_", ref_grp)
+  cf_R <- paste0("R_", foc_grp)
+  cr_N <- paste0("N_", ref_grp)
+  cf_N <- paste0("N_", foc_grp)
+
+  if (all(c(cr_R, cf_R, cr_N, cf_N) %in% names(agg))) {
+    agg <- agg |>
+      mutate(
+        A = !!sym(cr_R), # Ref Correct
+        B = !!sym(cr_N) - !!sym(cr_R), # Ref Wrong
+        C = !!sym(cf_R), # Foc Correct
+        D = !!sym(cf_N) - !!sym(cf_R), # Foc Wrong
+        T = !!sym(cr_N) + !!sym(cf_N) # Total N
       ) |>
-      pivot_wider(names_from = GROUP, values_from = c(R, N), values_fill = 0)
+      filter(T > 0)
 
-    # Nombres dinámicos según grupos
-    cr_R <- paste0("R_", ref_grp)
-    cf_R <- paste0("R_", foc_grp)
-    cr_N <- paste0("N_", ref_grp)
-    cf_N <- paste0("N_", foc_grp)
+    # Mantel-Haenszel Common Odds Ratio
+    # alpha_MH = sum(A*D / T) / sum(B*C / T)
+    num <- sum((agg$A * agg$D) / agg$T, na.rm = T)
+    den <- sum((agg$B * agg$C) / agg$T, na.rm = T)
 
-    if (all(c(cr_R, cf_R, cr_N, cf_N) %in% names(agg))) {
-      agg <- agg |>
-        mutate(
-          A = !!sym(cr_R), # Ref Correct
-          B = !!sym(cr_N) - !!sym(cr_R), # Ref Wrong
-          C = !!sym(cf_R), # Foc Correct
-          D = !!sym(cf_N) - !!sym(cf_R), # Foc Wrong
-          T = !!sym(cr_N) + !!sym(cf_N) # Total N
-        ) |>
-        filter(T > 0)
+    if (den > 0) {
+      alpha_mh <- num / den
+      delta_mh <- -2.35 * log(alpha_mh) # ETS Delta scale
 
-      # Mantel-Haenszel Common Odds Ratio
-      # alpha_MH = sum(A*D / T) / sum(B*C / T)
-      num <- sum((agg$A * agg$D) / agg$T, na.rm = T)
-      den <- sum((agg$B * agg$C) / agg$T, na.rm = T)
+      # Clasificación ETS
+      abs_d <- abs(delta_mh)
+      flag <- "A (Negligible)"
+      if (abs_d >= 1.5) {
+        flag <- "C (Large)"
+      } else if (abs_d >= 1.0) flag <- "B (Moderate)"
 
-      if (den > 0) {
-        alpha_mh <- num / den
-        delta_mh <- -2.35 * log(alpha_mh) # ETS Delta scale
-
-        # Clasificación ETS
-        abs_d <- abs(delta_mh)
-        flag <- "A (Negligible)"
-        if (abs_d >= 1.5) {
-          flag <- "C (Large)"
-        } else if (abs_d >= 1.0) flag <- "B (Moderate)"
-
-        res_list[[item]] <- data.frame(
-          ITEM = item,
-          MH_Alpha = round(alpha_mh, 4),
-          ETS_Delta = round(delta_mh, 4),
-          FLAG = flag,
-          Favors = ifelse(delta_mh > 0, foc_grp, ref_grp)
-        )
-      }
+      return(data.frame(
+        ITEM = item,
+        MH_Alpha = round(alpha_mh, 4),
+        ETS_Delta = round(delta_mh, 4),
+        FLAG = flag,
+        Favors = ifelse(delta_mh > 0, foc_grp, ref_grp)
+      ))
     }
   }
+  return(NULL)
+}
+
+#' Calcula estadísticas Mantel-Haenszel
+#' @param current_df Dataframe actual con score.
+#' @param items_to_test Ítems a analizar.
+#' @param ref_grp Grupo de referencia.
+#' @param foc_grp Grupo focal.
+#' @return Dataframe con resultados MH.
+calculate_mh_stats <- function(current_df, items_to_test, ref_grp, foc_grp) {
+  current_df <- create_score_strata(current_df)
+
+  res_list <- lapply(items_to_test, function(item) {
+    compute_item_mh_stats(current_df, item, ref_grp, foc_grp)
+  })
+
   return(do.call(rbind, res_list))
 }
 
