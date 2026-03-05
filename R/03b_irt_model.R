@@ -356,20 +356,29 @@ generate_irt_diagnostics <- function(mod, config) {
 
   scores <- mirt::fscores(mod, method = "EAP", full.scores = TRUE, verbose = FALSE)
   theta <- scores[, 1]
+  theta_mat <- matrix(theta, ncol = 1)
   data_mat <- mod@Data$data
   items <- colnames(data_mat)
   item_fit_list <- list()
 
+  # Precompute all probabilities and categories
+  P_all <- mirt::probtrace(mod, theta_mat)
+  Ks <- mod@Data$K
+  col_idx <- 1
+
   for (i in seq_along(items)) {
     obs <- data_mat[, i]
     idx <- !is.na(obs)
+    K <- Ks[i]
 
     # Si hay muy pocos datos para este ítem, saltar
-    if (sum(idx) < 10) next
+    if (sum(idx) < 10) {
+      col_idx <- col_idx + K
+      next
+    }
 
-    itm_obj <- mirt::extract.item(mod, i)
-    P <- mirt::probtrace(itm_obj, theta[idx])
-    K <- itm_obj@ncat
+    P <- P_all[idx, col_idx:(col_idx + K - 1), drop = FALSE]
+    col_idx <- col_idx + K
     vals <- 0:(K - 1)
 
     # Expected Value
@@ -412,11 +421,12 @@ generate_irt_diagnostics <- function(mod, config) {
         n_items <- ncol(data_mat)
         n_persons <- nrow(data_mat)
         residuals_mat <- matrix(NA, nrow = n_persons, ncol = n_items)
+        col_idx <- 1
 
         for (i in 1:n_items) {
-          itm <- mirt::extract.item(mod, i)
-          P <- mirt::probtrace(itm, theta) # Probabilidad para todos (incluso NAs para ver estructura)
-          K <- itm@ncat
+          K <- Ks[i]
+          P <- P_all[, col_idx:(col_idx + K - 1), drop = FALSE]
+          col_idx <- col_idx + K
           vals <- 0:(K - 1)
           E <- P %*% vals
           obs <- data_mat[, i]
