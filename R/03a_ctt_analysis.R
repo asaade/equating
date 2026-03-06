@@ -349,6 +349,11 @@ analyze_distractor_efficiency <- function(raw_df, scored_df, items) {
     tbl <- table(resp_vec[valid_mask], groups[valid_mask])
     opts <- rownames(tbl)
 
+    # Calcular Rest Score: (Score Total - Score del Ítem actual)
+    # Protegido contra NAs asumiendo 0 aporte al total en caso de NA.
+    item_score <- scored_df[[itm]]
+    rest_score <- total_score - ifelse(is.na(item_score), 0, item_score)
+
     # Correlación P-Biserial por Opción (Opción elegida vs Score Total)
     # Vectorized computation replaces inner loop over options
     dummy_mat <- vapply(opts, function(o) as.integer(resp_vec == o), integer(length(resp_vec)), USE.NAMES = FALSE)
@@ -358,7 +363,7 @@ analyze_distractor_efficiency <- function(raw_df, scored_df, items) {
       dummy_mat <- matrix(dummy_mat, ncol = length(opts))
     }
 
-    res_cor <- suppressWarnings(cor(dummy_mat, total_score, use = "pairwise.complete.obs"))
+    res_cor <- suppressWarnings(cor(dummy_mat, rest_score, use = "pairwise.complete.obs"))
     rbis_vec <- as.vector(res_cor)
 
     if (any(is.na(rbis_vec))) {
