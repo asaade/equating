@@ -18,7 +18,7 @@ internal_save_csv <- function(data, filepath) {
       debug(sprintf("  -> Guardado: %s", basename(filepath)))
     },
     error = function(e) {
-      error(sprintf("Error guardando %s: %s", basename(filepath), e$message))
+      error(sprintf("Error guardando %s: %s", basename(filepath), sanitize_error_msg(e)))
     }
   )
 }
@@ -77,7 +77,7 @@ export_calibration_evidence <- function(model_results, out_dir) {
         }
       },
       error = function(e) {
-        warn(paste("Fallo cálculo CTT:", e$message))
+        warn(paste("Fallo cálculo CTT:", sanitize_error_msg(e)))
         internal_save_csv(model_results$parameters, file.path(calib_dir, "IRT_Item_Parameters_Basic.csv"))
       }
     )
@@ -306,7 +306,7 @@ generate_audit_memo <- function(model_results, scores_df, config, out_dir) {
       debug("Memorando técnico generado.")
     },
     error = function(e) {
-      error(paste("Error generando memo:", e$message))
+      error(paste("Error generando memo:", sanitize_error_msg(e)))
     }
   )
 }
@@ -341,7 +341,7 @@ generate_irt_reports <- function(config, irt_results, final_scores) {
         saveRDS(model_res$model_obj, rds_path)
         debug("  -> Objeto mirt guardado (RDS).")
       },
-      error = function(e) warn(paste("Error guardando RDS:", e$message))
+      error = function(e) warn(paste("Error guardando RDS:", sanitize_error_msg(e)))
     )
   }
 

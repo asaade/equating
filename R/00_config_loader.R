@@ -130,6 +130,23 @@ setup_parallel <- function(config) {
   }
 }
 
+get_form_code_map <- function(config) {
+  if (is.null(config$forms)) {
+    return(NULL)
+  }
+  map_vec <- c()
+  for (form_name in names(config$forms)) {
+    codes_raw <- config$forms[[form_name]]$codes
+    codes <- if (is.list(codes_raw)) unlist(codes_raw) else codes_raw
+    if (!is.null(codes) && length(codes) > 0) {
+      codes_clean <- trimws(as.character(codes))
+      temp_map <- structure(rep(form_name, length(codes_clean)), names = codes_clean)
+      map_vec <- c(map_vec, temp_map)
+    }
+  }
+  map_vec
+}
+
 build_form_mapper <- function(config) {
   if (is.null(config$forms)) {
     error("Sección 'forms' faltante en configuración. No se puede construir mapa.", "Mapper")

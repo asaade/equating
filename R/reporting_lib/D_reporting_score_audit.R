@@ -178,16 +178,37 @@ audit_score_impact <- function(final_scores, raw_dat = NULL, eq_results = NULL, 
   print_section("5. EQUIDAD Y ANÁLISIS DE SUBGRUPOS (FAIRNESS)")
 
   if (!is.null(raw_dat)) {
+    # --- FIX: Detección segura de columnas demográficas (Case-Insensitive) ---
+    raw_cols <- names(raw_dat)
+    raw_cols_up <- toupper(raw_cols)
+
+    # Identificar nombres reales de columnas prioritarias
+    col_id_raw  <- raw_cols[match("ID", raw_cols_up)]
+    col_sexo    <- raw_cols[match("SEXO", raw_cols_up)]
+    col_region  <- raw_cols[match("REGION", raw_cols_up)]
+
     # Unir datos demográficos (raw_dat) con puntuaciones (final_scores) usando ID
     # Aseguramos que ID sea del mismo tipo
     final_scores$ID <- as.character(final_scores$ID)
-    raw_dat$ID <- as.character(raw_dat$ID)
 
-    # FIX: Usar any_of para evitar error si faltan columnas demográficas
-    cols_demog <- c("ID", "SEXO", "REGION")
+    if (!is.na(col_id_raw)) {
+      raw_dat[[col_id_raw]] <- as.character(raw_dat[[col_id_raw]])
 
-    merged_scores <- final_scores |>
-      dplyr::left_join(raw_dat |> dplyr::select(dplyr::any_of(cols_demog)), by = "ID")
+      # Columnas a seleccionar (las que existan)
+      cols_demog_to_select <- c(col_id_raw, col_sexo, col_region)
+      cols_demog_to_select <- cols_demog_to_select[!is.na(cols_demog_to_select)]
+
+      merged_scores <- final_scores |>
+        dplyr::left_join(raw_dat |> dplyr::select(dplyr::all_of(cols_demog_to_select)), by = setNames(col_id_raw, "ID"))
+    } else {
+      merged_scores <- final_scores
+      # Intentar usar warn si está disponible (según memoria está en R/00_common_base.R)
+      if (exists("warn")) {
+        warn("No se encontró columna ID en raw_dat para cruce demográfico.", "Audit_Score")
+      } else {
+        cat(">> ADVERTENCIA: No se encontró columna ID en raw_dat para cruce demográfico.\n")
+      }
+    }
 
     # Función interna para analizar un grupo
     analyze_group <- function(data, group_var) {
@@ -246,8 +267,8 @@ audit_score_impact <- function(final_scores, raw_dat = NULL, eq_results = NULL, 
       }
     }
 
-    if ("SEXO" %in% names(merged_scores)) analyze_group(merged_scores, "SEXO")
-    if ("REGION" %in% names(merged_scores)) analyze_group(merged_scores, "REGION")
+    if (!is.na(col_sexo) && col_sexo %in% names(merged_scores)) analyze_group(merged_scores, col_sexo)
+    if (!is.na(col_region) && col_region %in% names(merged_scores)) analyze_group(merged_scores, col_region)
   } else {
     cat("Datos crudos (raw_dat) no disponibles. Se omite análisis demográfico.\n")
   }
