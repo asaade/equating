@@ -137,16 +137,31 @@ compute_item_mh_stats <- function(current_df, item, ref_grp, foc_grp) {
 }
 
 #' Calcula estadísticas Mantel-Haenszel
-#' @param current_df Dataframe actual con score.
+#' @param df Dataframe actual.
 #' @param items_to_test Ítems a analizar.
+#' @param matching_items Ítems a utilizar para el score de matching.
 #' @param ref_grp Grupo de referencia.
 #' @param foc_grp Grupo focal.
 #' @return Dataframe con resultados MH.
-calculate_mh_stats <- function(current_df, items_to_test, ref_grp, foc_grp) {
-  current_df <- create_score_strata(current_df)
+calculate_mh_stats <- function(df, items_to_test, matching_items, ref_grp, foc_grp) {
+  # Pre-calcular el score base de matching
+  base_score <- rowSums(df[, matching_items, drop = FALSE], na.rm = TRUE)
 
   res_list <- lapply(items_to_test, function(item) {
-    compute_item_mh_stats(current_df, item, ref_grp, foc_grp)
+    item_df <- df
+
+    # Si el ítem es parte de los ítems de matching, su score ya está incluido.
+    if (item %in% matching_items) {
+      item_df$SCORE <- base_score
+    } else {
+      # Si no, agregarlo al score base para evitar sesgo de correlación parte-todo
+      item_val <- item_df[[item]]
+      item_val[is.na(item_val)] <- 0
+      item_df$SCORE <- base_score + item_val
+    }
+
+    item_df <- create_score_strata(item_df)
+    compute_item_mh_stats(item_df, item, ref_grp, foc_grp)
   })
 
   return(do.call(rbind, res_list))
@@ -177,11 +192,9 @@ perform_dif_purification <- function(df_proc, stage1_res, item_names, ref_grp, f
       return(stage1_res)
     }
 
-    df_proc$SCORE <- rowSums(df_proc[, valid_items_for_score, drop = FALSE], na.rm = TRUE)
-
-    # Recalcular DIF para TODOS los ítems usando el score purificado
+    # Recalcular DIF para todos los ítems usando el score purificado
     debug("DIF: Etapa 2 (Recálculo Purificado)...")
-    final_res <- calculate_mh_stats(df_proc, item_names, ref_grp, foc_grp)
+    final_res <- calculate_mh_stats(df_proc, item_names, valid_items_for_score, ref_grp, foc_grp)
     return(final_res)
   } else {
     debug("DIF: No se detectaron ítems con DIF severo en Etapa 1. Purificación no requerida.")
@@ -219,10 +232,7 @@ run_dif_analysis <- function(response_df, demographic_df, item_names, config, sc
 
   # ETAPA 1: CÁLCULO INICIAL
   debug("DIF: Etapa 1 (Inicial)...")
-  # Cálculo de Raw Score inicial
-  df_proc$SCORE <- rowSums(df_proc[, item_names, drop = FALSE], na.rm = TRUE)
-
-  stage1_res <- calculate_mh_stats(df_proc, item_names, ref_grp, foc_grp)
+  stage1_res <- calculate_mh_stats(df_proc, item_names, item_names, ref_grp, foc_grp)
 
   if (is.null(stage1_res) || !purify) {
     return(stage1_res)
