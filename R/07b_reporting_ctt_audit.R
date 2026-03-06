@@ -23,13 +23,18 @@ pad_str <- function(x, width, align = "left") {
 }
 
 fmt_num <- function(x, digits = 4, width = 8) {
-  sapply(x, function(val) {
-    if (is.null(val) || is.na(val) || !is.numeric(val)) {
-      return(pad_str("-", width, "right"))
-    }
-    txt <- sprintf(paste0("%.", digits, "f"), val)
-    pad_str(txt, width, "right")
-  })
+  if (length(x) == 0) return(character(0))
+  # Detectar valores no numéricos o NA de forma eficiente
+  invalid <- is.na(x) | !vapply(x, is.numeric, logical(1))
+
+  # Formatear todos (los invalid darán "NA" que luego sobreescribiremos)
+  txt <- sprintf(paste0("%.", digits, "f"), x)
+  res <- pad_str(txt, width, "right")
+
+  if (any(invalid)) {
+    res[invalid] <- pad_str("-", width, "right")
+  }
+  res
 }
 
 draw_ascii_bar <- function(val, limit = 3, width = 10, center = FALSE) {
@@ -114,20 +119,21 @@ print_audit_moments <- function(moments, desc) {
   ))
   cat(paste0(strrep("-", 100), "\n"))
 
-  if (!is.null(moments)) {
-    for (i in 1:nrow(moments)) {
-      m <- moments[i, ]
-      d_raw <- desc[desc$FORMA_LABEL == m$FORM, ]
-      delta <- m$MEAN_EQ - d_raw$Mean
-      cohen_d <- if (d_raw$SD > 0) delta / d_raw$SD else 0
-      vis_d <- draw_ascii_bar(cohen_d, limit = 0.8, width = 14, center = TRUE)
+  if (!is.null(moments) && nrow(moments) > 0) {
+    # Match descriptives to moments by Form Label
+    idx <- match(moments$FORM, desc$FORMA_LABEL)
+    d_raw <- desc[idx, ]
 
-      cat(paste0(
-        pad_str(m$FORM, 12), fmt_num(m$N, 0, 6), " | ",
-        fmt_num(d_raw$Mean, 2, 8), fmt_num(m$MEAN_EQ, 2, 8), fmt_num(delta, 2, 8), " | ",
-        fmt_num(cohen_d, 3, 11), pad_str(vis_d, 14), "\n"
-      ))
-    }
+    delta <- moments$MEAN_EQ - d_raw$Mean
+    cohen_d <- ifelse(!is.na(d_raw$SD) & d_raw$SD > 0, delta / d_raw$SD, 0)
+    vis_d <- vapply(cohen_d, draw_ascii_bar, FUN.VALUE = character(1), limit = 0.8, width = 14, center = TRUE)
+
+    lines <- paste0(
+      pad_str(moments$FORM, 12), fmt_num(moments$N, 0, 6), " | ",
+      fmt_num(d_raw$Mean, 2, 8), fmt_num(moments$MEAN_EQ, 2, 8), fmt_num(delta, 2, 8), " | ",
+      fmt_num(cohen_d, 3, 11), pad_str(vis_d, 14), "\n"
+    )
+    cat(paste(lines, collapse = ""))
   }
 }
 
@@ -140,16 +146,14 @@ print_audit_decisions <- function(decisions) {
   ))
   cat(paste0(strrep("-", 100), "\n"))
 
-  if (!is.null(decisions)) {
-    for (i in 1:nrow(decisions)) {
-      dec <- decisions[i, ]
-      sel_mark <- if (dec$Selected) "[X]" else "[ ]"
-      cat(paste0(
-        pad_str(dec$Method, 15), pad_str(sel_mark, 5), pad_str(dec$TRAFFIC_LIGHT, 7),
-        fmt_num(dec$W_SEE, 3, 8), fmt_num(dec$RMSD_Ref, 3, 8),
-        fmt_num(dec$Wiggliness, 5, 10), " | ", pad_str(dec$Reason_Tag, 25), "\n"
-      ))
-    }
+  if (!is.null(decisions) && nrow(decisions) > 0) {
+    sel_mark <- ifelse(decisions$Selected, "[X]", "[ ]")
+    lines <- paste0(
+      pad_str(decisions$Method, 15), pad_str(sel_mark, 5), pad_str(decisions$TRAFFIC_LIGHT, 7),
+      fmt_num(decisions$W_SEE, 3, 8), fmt_num(decisions$RMSD_Ref, 3, 8),
+      fmt_num(decisions$Wiggliness, 5, 10), " | ", pad_str(decisions$Reason_Tag, 25), "\n"
+    )
+    cat(paste(lines, collapse = ""))
   }
 }
 
@@ -162,15 +166,15 @@ print_audit_coefficients <- function(coeffs, eq_results) {
   ))
   cat(paste0(strrep("-", 100), "\n"))
 
-  if (!is.null(coeffs)) {
-    for (i in 1:nrow(coeffs)) {
-      co <- coeffs[i, ]
-      cat(paste0(
-        pad_str(co$LINK_SOURCE, 12), pad_str(co$LINK_TARGET, 12), pad_str(co$METHOD_USED, 12),
-        fmt_num(co$SLOPE, 3, 8), fmt_num(co$INTERCEPT, 3, 8),
-        fmt_num(co$GAMMA, 3, 8), fmt_num(eq_results$link_quality$R_ANCHOR[i], 3, 8), "\n"
-      ))
-    }
+  if (!is.null(coeffs) && nrow(coeffs) > 0) {
+    # Asumiendo correspondencia 1:1 entre coeffs y link_quality$R_ANCHOR
+    r_anchor <- eq_results$link_quality$R_ANCHOR[1:nrow(coeffs)]
+    lines <- paste0(
+      pad_str(coeffs$LINK_SOURCE, 12), pad_str(coeffs$LINK_TARGET, 12), pad_str(coeffs$METHOD_USED, 12),
+      fmt_num(coeffs$SLOPE, 3, 8), fmt_num(coeffs$INTERCEPT, 3, 8),
+      fmt_num(coeffs$GAMMA, 3, 8), fmt_num(r_anchor, 3, 8), "\n"
+    )
+    cat(paste(lines, collapse = ""))
   }
 }
 
@@ -178,7 +182,8 @@ print_audit_drift <- function(drift) {
   print_header("4. ESTABILIDAD DE ANCLAS (FORENSIC DRIFT)")
   if (!is.null(drift) && nrow(drift) > 0) {
     # Filtrar solo anclas sospechosas o una muestra significativa
-    drift_top <- drift[order(-abs(drift$Z_SCORE)), ]
+    drift_top <- head(drift[order(-abs(drift$Z_SCORE)), ], 20)
+
     cat(paste0(
       pad_str("ITEM_ID", 12), pad_str("STATUS", 8), pad_str("P_SRC", 7, "right"),
       pad_str("P_DST", 7, "right"), pad_str("Z_SCORE", 8, "right"), " | ",
@@ -186,20 +191,19 @@ print_audit_drift <- function(drift) {
     ))
     cat(paste0(strrep("-", 100), "\n"))
 
-    for (i in 1:min(20, nrow(drift_top))) {
-      dr <- drift_top[i, ]
-      vis_z <- draw_ascii_bar(dr$Z_SCORE, limit = 3.0, width = 14, center = TRUE)
-      cat(paste0(
-        pad_str(rownames(dr), 12), pad_str(dr$STATUS, 8), fmt_num(dr$P_SRC, 2, 7),
-        fmt_num(dr$P_DEST, 2, 7), fmt_num(dr$Z_SCORE, 2, 8), " | ",
-        pad_str(vis_z, 14), pad_str(dr$REASON, 15), "\n"
-      ))
-    }
+    vis_z <- vapply(drift_top$Z_SCORE, draw_ascii_bar, FUN.VALUE = character(1), limit = 3.0, width = 14, center = TRUE)
+
+    lines <- paste0(
+      pad_str(rownames(drift_top), 12), pad_str(drift_top$STATUS, 8), fmt_num(drift_top$P_SRC, 2, 7),
+      fmt_num(drift_top$P_DEST, 2, 7), fmt_num(drift_top$Z_SCORE, 2, 8), " | ",
+      pad_str(vis_z, 14), pad_str(drift_top$REASON, 15), "\n"
+    )
+    cat(paste(lines, collapse = ""))
   }
 }
 
 print_audit_critical <- function(crit_tab) {
-  if (!is.null(crit_tab)) {
+  if (!is.null(crit_tab) && nrow(crit_tab) > 0) {
     print_header("5. PRECISIÓN EN PUNTOS DE CORTE")
     cat(paste0(
       pad_str("FORM", 12), pad_str("CUT", 6, "right"), pad_str("EQ_SCORE", 9, "right"),
@@ -208,18 +212,16 @@ print_audit_critical <- function(crit_tab) {
     ))
     cat(paste0(strrep("-", 100), "\n"))
 
-    for (i in 1:nrow(crit_tab)) {
-      ct <- crit_tab[i, ]
-      ci_l <- ct$EQUATED_AT_CUT - (1.96 * ct$SEE_AT_CUT)
-      ci_u <- ct$EQUATED_AT_CUT + (1.96 * ct$SEE_AT_CUT)
-      ci_str <- sprintf("[%5.2f, %5.2f]", ci_l, ci_u)
+    ci_l <- crit_tab$EQUATED_AT_CUT - (1.96 * crit_tab$SEE_AT_CUT)
+    ci_u <- crit_tab$EQUATED_AT_CUT + (1.96 * crit_tab$SEE_AT_CUT)
+    ci_str <- sprintf("[%5.2f, %5.2f]", ci_l, ci_u)
 
-      cat(paste0(
-        pad_str(ct$FORM, 12), fmt_num(ct$TARGET_CUT_RAW_REF, 0, 6), fmt_num(ct$EQUATED_AT_CUT, 2, 9),
-        fmt_num(ct$SEE_AT_CUT, 3, 8), fmt_num(ct$TRE_AT_CUT, 3, 8), " | ",
-        pad_str(ci_str, 18), "\n"
-      ))
-    }
+    lines <- paste0(
+      pad_str(crit_tab$FORM, 12), fmt_num(crit_tab$TARGET_CUT_RAW_REF, 0, 6), fmt_num(crit_tab$EQUATED_AT_CUT, 2, 9),
+      fmt_num(crit_tab$SEE_AT_CUT, 3, 8), fmt_num(crit_tab$TRE_AT_CUT, 3, 8), " | ",
+      pad_str(ci_str, 18), "\n"
+    )
+    cat(paste(lines, collapse = ""))
   }
 }
 
