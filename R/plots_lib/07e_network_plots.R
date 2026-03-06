@@ -70,10 +70,20 @@ plot_equating_network <- function(eq_results, ref_id = NULL) {
 
   # 3. Construcción del Grafo y Layout
   g <- igraph::graph_from_data_frame(plot_data, directed = TRUE)
-  set.seed(42) # Semilla fija para consistencia visual
+
+  # Semilla fija para consistencia visual, restaurando estado posterior
+  old_seed <- if (exists(".Random.seed", envir = .GlobalEnv)) get(".Random.seed", envir = .GlobalEnv) else NULL
+  set.seed(42)
 
   # Layout Kamada-Kawai (Fuerza dirigida)
   layout_coords <- as.data.frame(igraph::layout_with_kk(g))
+
+  if (!is.null(old_seed)) {
+    assign(".Random.seed", old_seed, envir = .GlobalEnv)
+  } else {
+    rm(.Random.seed, envir = .GlobalEnv)
+  }
+
   colnames(layout_coords) <- c("x", "y")
   layout_coords$Form <- names(igraph::V(g))
 
