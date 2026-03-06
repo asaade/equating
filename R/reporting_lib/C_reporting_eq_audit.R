@@ -87,21 +87,27 @@ audit_01_impact <- function(desc_raw, mom_eq) {
     pad_str("EFF_SIZE(d)", 11, "right"), pad_str("VISUAL_D", 14), "\n"
   ))
   cat(paste0(strrep("-", 100), "\n"))
-  if (!is.null(desc_raw)) {
-    for (i in 1:nrow(desc_raw)) {
-      d <- desc_raw[i, ]
-      frm <- if ("FORMA_LABEL" %in% names(d)) d$FORMA_LABEL else d$FORM
-      eq_row <- if (!is.null(mom_eq)) mom_eq[mom_eq$FORM == frm, ][1, ] else NULL
-      mn_eq <- if (!is.null(eq_row)) eq_row$MEAN_EQ else NA
-      delta <- if (!is.na(mn_eq)) mn_eq - d$Mean else NA
-      cohen_d <- if (!is.na(delta) && d$SD > 0) delta / d$SD else NA
-      vis_d <- draw_ascii_bar(cohen_d, limit = 1.0, width = 14, center = TRUE)
-      cat(paste0(
-        pad_str(frm, 12), fmt_num(d$N, 0, 6), " | ",
-        fmt_num(d$Mean, 2, 8), fmt_num(mn_eq, 2, 8), fmt_num(delta, 2, 8), " | ",
-        fmt_num(cohen_d, 3, 11), pad_str(vis_d, 14), "\n"
-      ))
+  if (!is.null(desc_raw) && nrow(desc_raw) > 0) {
+    frm <- if ("FORMA_LABEL" %in% names(desc_raw)) desc_raw$FORMA_LABEL else desc_raw$FORM
+
+    if (!is.null(mom_eq) && nrow(mom_eq) > 0) {
+      idx <- match(frm, mom_eq$FORM)
+      mn_eq <- mom_eq$MEAN_EQ[idx]
+    } else {
+      mn_eq <- rep(NA_real_, nrow(desc_raw))
     }
+
+    delta <- mn_eq - desc_raw$Mean
+    cohen_d <- ifelse(!is.na(delta) & desc_raw$SD > 0, delta / desc_raw$SD, NA_real_)
+
+    vis_d <- vapply(cohen_d, function(x) draw_ascii_bar(x, limit = 1.0, width = 14, center = TRUE), FUN.VALUE = character(1))
+
+    lines <- paste0(
+      pad_str(frm, 12), fmt_num(desc_raw$N, 0, 6), " | ",
+      fmt_num(desc_raw$Mean, 2, 8), fmt_num(mn_eq, 2, 8), fmt_num(delta, 2, 8), " | ",
+      fmt_num(cohen_d, 3, 11), pad_str(vis_d, 14), "\n"
+    )
+    cat(paste(lines, collapse = ""))
   }
 }
 

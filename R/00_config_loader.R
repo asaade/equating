@@ -39,7 +39,7 @@ load_project_config <- function(yaml_path = "config.yaml", defs_path = "R/00_con
 
   # Helper para acumular errores sin detener el flujo inmediatamente
   assert_logic <- function(condition, msg) {
-    if (!condition) errors <<- c(errors, msg)
+    if (!condition) errors <- c(errors, msg)
   }
 
   # A. Validación de Archivos (Inputs)

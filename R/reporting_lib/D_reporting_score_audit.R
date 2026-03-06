@@ -52,8 +52,8 @@ audit_score_impact <- function(final_scores, raw_dat = NULL, eq_results = NULL, 
   # ----------------------------------------------------------------------------
   print_section("1. COMPARATIVA DE MÉTRICA (DELTA)")
   if ("Raw_Global_CTT" %in% names(final_scores) && "Eq_Global_CTT" %in% names(final_scores)) {
-    raw_m <- mean(final_scores$Raw_Global_CTT, na.rm = T)
-    eq_m <- mean(final_scores$Eq_Global_CTT, na.rm = T)
+    raw_m <- mean(final_scores$Raw_Global_CTT, na.rm = TRUE)
+    eq_m <- mean(final_scores$Eq_Global_CTT, na.rm = TRUE)
     delta <- eq_m - raw_m
 
     cat(paste0("Media Puntuación Cruda  : ", sprintf("%.2f", raw_m), "\n"))
@@ -209,7 +209,7 @@ audit_score_impact <- function(final_scores, raw_dat = NULL, eq_results = NULL, 
         ) |>
         dplyr::mutate(
           # Diferencia estandarizada
-          Std_Diff = (Mean_Eq - mean(data$Eq_Global_CTT, na.rm = T)) / sd(data$Eq_Global_CTT, na.rm = T)
+          Std_Diff = (Mean_Eq - mean(data$Eq_Global_CTT, na.rm = TRUE)) / sd(data$Eq_Global_CTT, na.rm = TRUE)
         )
 
       cat(paste0(
@@ -236,8 +236,8 @@ audit_score_impact <- function(final_scores, raw_dat = NULL, eq_results = NULL, 
         ))
       }
 
-      max_pass <- max(stats$Pass_Rate, na.rm = T)
-      min_pass <- min(stats$Pass_Rate, na.rm = T)
+      max_pass <- max(stats$Pass_Rate, na.rm = TRUE)
+      min_pass <- min(stats$Pass_Rate, na.rm = TRUE)
       if ((max_pass - min_pass) > 10) {
         cat(paste0(
           ">> ALERTA: Brecha de aprobación > 10% detectada en ", group_var,

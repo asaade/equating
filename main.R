@@ -224,7 +224,7 @@ final_scores <- execute_safely(
   {
     # Decisión de población objetivo
 
-    suppressWarnings(rm(scored_df))
+    if(exists('scored_df')) rm(scored_df)
     res <- apply_final_scoring(
       item_scored_df = target_df,
       irt_scores_df = irt_results$scores,
@@ -238,7 +238,7 @@ final_scores <- execute_safely(
 )
 
 track_stage(audit, "Scoring_Final", input = target_df, output = final_scores, output_dir_root = config$project$output_dir)
-suppressWarnings(rm(target_df))
+if(exists('target_df')) rm(target_df)
 
 # ---------------------------------------------------------
 # FASE 7: GENERACIÓN DE REPORTES CTT (Evidencia Técnica)

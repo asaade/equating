@@ -97,8 +97,8 @@ run_dif_analysis <- function(response_df, demographic_df, item_names, config, sc
 
         # Mantel-Haenszel Common Odds Ratio
         # alpha_MH = sum(A*D / T) / sum(B*C / T)
-        num <- sum((agg$A * agg$D) / agg$T, na.rm = T)
-        den <- sum((agg$B * agg$C) / agg$T, na.rm = T)
+        num <- sum((agg$A * agg$D) / agg$T, na.rm = TRUE)
+        den <- sum((agg$B * agg$C) / agg$T, na.rm = TRUE)
 
         if (den > 0) {
           alpha_mh <- num / den
@@ -149,7 +149,118 @@ run_dif_analysis <- function(response_df, demographic_df, item_names, config, sc
     return(stage1_res)
   }
 
+<<<<<<< HEAD
   # ETAPA 2: PURIFICACIÓN
+=======
+  current_df |> filter(!is.na(Bin))
+}
+
+#' Calcula estadísticas Mantel-Haenszel por ítem
+#' @param current_df Dataframe actual con score y Bin.
+#' @param item Ítem a analizar.
+#' @param ref_grp Grupo de referencia.
+#' @param foc_grp Grupo focal.
+#' @return Dataframe con 1 fila de resultados MH o NULL.
+compute_item_mh_stats <- function(current_df, item, ref_grp, foc_grp) {
+  # Evitar items constantes (todos 0 o todos 1)
+  if (var(current_df[[item]], na.rm = TRUE) == 0) return(NULL)
+
+  # Tabla de contingencia por estrato
+  # Estructura: Bin | Group | R_correct | N_total
+  agg <- current_df |>
+    group_by(Bin, GROUP) |>
+    summarise(
+      R = sum(!!sym(item), na.rm = TRUE),
+      N = n(),
+      .groups = "drop"
+    ) |>
+    pivot_wider(names_from = GROUP, values_from = c(R, N), values_fill = 0)
+
+  # Nombres dinámicos según grupos
+  cr_R <- paste0("R_", ref_grp)
+  cf_R <- paste0("R_", foc_grp)
+  cr_N <- paste0("N_", ref_grp)
+  cf_N <- paste0("N_", foc_grp)
+
+  if (all(c(cr_R, cf_R, cr_N, cf_N) %in% names(agg))) {
+    agg <- agg |>
+      mutate(
+        A = !!sym(cr_R), # Ref Correct
+        B = !!sym(cr_N) - !!sym(cr_R), # Ref Wrong
+        C = !!sym(cf_R), # Foc Correct
+        D = !!sym(cf_N) - !!sym(cf_R), # Foc Wrong
+        T = !!sym(cr_N) + !!sym(cf_N) # Total N
+      ) |>
+      filter(T > 0)
+
+    # Mantel-Haenszel Common Odds Ratio
+    # alpha_MH = sum(A*D / T) / sum(B*C / T)
+    num <- sum((agg$A * agg$D) / agg$T, na.rm = TRUE)
+    den <- sum((agg$B * agg$C) / agg$T, na.rm = TRUE)
+
+    if (den > 0) {
+      alpha_mh <- num / den
+      delta_mh <- -2.35 * log(alpha_mh) # ETS Delta scale
+
+      # Clasificación ETS
+      abs_d <- abs(delta_mh)
+      flag <- "A (Negligible)"
+      if (abs_d >= 1.5) {
+        flag <- "C (Large)"
+      } else if (abs_d >= 1.0) flag <- "B (Moderate)"
+
+      return(data.frame(
+        ITEM = item,
+        MH_Alpha = round(alpha_mh, 4),
+        ETS_Delta = round(delta_mh, 4),
+        FLAG = flag,
+        Favors = ifelse(delta_mh > 0, foc_grp, ref_grp)
+      ))
+    }
+  }
+  return(NULL)
+}
+
+#' Calcula estadísticas Mantel-Haenszel
+#' @param df Dataframe actual.
+#' @param items_to_test Ítems a analizar.
+#' @param matching_items Ítems a utilizar para el score de matching.
+#' @param ref_grp Grupo de referencia.
+#' @param foc_grp Grupo focal.
+#' @return Dataframe con resultados MH.
+calculate_mh_stats <- function(df, items_to_test, matching_items, ref_grp, foc_grp) {
+  # Pre-calcular el score base de matching
+  base_score <- rowSums(df[, matching_items, drop = FALSE], na.rm = TRUE)
+
+  res_list <- lapply(items_to_test, function(item) {
+    item_df <- df
+
+    # Si el ítem es parte de los ítems de matching, su score ya está incluido.
+    if (item %in% matching_items) {
+      item_df$SCORE <- base_score
+    } else {
+      # Si no, agregarlo al score base para evitar sesgo de correlación parte-todo
+      item_val <- item_df[[item]]
+      item_val[is.na(item_val)] <- 0
+      item_df$SCORE <- base_score + item_val
+    }
+
+    item_df <- create_score_strata(item_df)
+    compute_item_mh_stats(item_df, item, ref_grp, foc_grp)
+  })
+
+  return(do.call(rbind, res_list))
+}
+
+#' Realiza la purificación para el análisis DIF
+#' @param df_proc Dataframe procesado.
+#' @param stage1_res Resultados de la etapa 1.
+#' @param item_names Nombres de los ítems.
+#' @param ref_grp Grupo de referencia.
+#' @param foc_grp Grupo focal.
+#' @return Resultados finales de DIF.
+perform_dif_purification <- function(df_proc, stage1_res, item_names, ref_grp, foc_grp) {
+>>>>>>> origin/main
   # Identificar ítems 'C' (Severos) para excluirlos del score de matching
   bad_items <- stage1_res |>
     filter(FLAG == "C (Large)") |>
@@ -167,11 +278,13 @@ run_dif_analysis <- function(response_df, demographic_df, item_names, config, sc
       return(stage1_res)
     }
 
-    df_proc$SCORE <- rowSums(df_proc[, valid_items_for_score, drop = FALSE], na.rm = TRUE)
-
-    # Recalcular DIF para TODOS los ítems usando el score purificado
+    # Recalcular DIF para todos los ítems usando el score purificado
     debug("DIF: Etapa 2 (Recálculo Purificado)...")
+<<<<<<< HEAD
     final_res <- calculate_mh_stats(df_proc, item_names)
+=======
+    final_res <- calculate_mh_stats(df_proc, item_names, valid_items_for_score, ref_grp, foc_grp)
+>>>>>>> origin/main
     return(final_res)
   } else {
     debug("DIF: No se detectaron ítems con DIF severo en Etapa 1. Purificación no requerida.")
@@ -179,6 +292,49 @@ run_dif_analysis <- function(response_df, demographic_df, item_names, config, sc
   }
 }
 
+<<<<<<< HEAD
+=======
+#' Ejecuta análisis DIF (Mantel-Haenszel) con opción de Purificación
+#' @param response_df Dataframe de respuestas.
+#' @param demographic_df Dataframe de datos demográficos.
+#' @param item_names Vector con los nombres de los ítems a evaluar.
+#' @param config Objeto de configuración.
+#' @param score_vec Vector de score (no utilizado, preservado por firma).
+#' @param purify Booleano. Si TRUE, recalcula el score excluyendo ítems con DIF severo (Nivel C) en una segunda etapa.
+#' @return Dataframe con resultados de DIF o NULL.
+run_dif_analysis <- function(response_df, demographic_df, item_names, config, score_vec = NULL, purify = TRUE) {
+  # 1. Validaciones de Configuración
+  if (is.null(config$dif) || !isTRUE(config$dif$enabled)) {
+    debug("Análisis DIF deshabilitado en configuración.")
+    return(NULL)
+  }
+
+  col_group <- config$dif$group_col
+  ref_grp <- config$dif$reference_group
+  foc_grp <- config$dif$focal_group
+
+  # 2. Fusión de Datos (Join por ID)
+  df_proc <- prepare_dif_data(response_df, demographic_df, col_group, ref_grp, foc_grp)
+  if (is.null(df_proc)) return(NULL)
+
+  debug(sprintf(
+    "Iniciando DIF (MH). Items: %d | N: %d | Grupo: %s (%s vs %s)",
+    length(item_names), nrow(df_proc), col_group, ref_grp, foc_grp
+  ))
+
+  # ETAPA 1: CÁLCULO INICIAL
+  debug("DIF: Etapa 1 (Inicial)...")
+  stage1_res <- calculate_mh_stats(df_proc, item_names, item_names, ref_grp, foc_grp)
+
+  if (is.null(stage1_res) || !purify) {
+    return(stage1_res)
+  }
+
+  # ETAPA 2: PURIFICACIÓN
+  return(perform_dif_purification(df_proc, stage1_res, item_names, ref_grp, foc_grp))
+}
+
+>>>>>>> origin/main
 
 # ==============================================================================
 # 7. DIF EXPORT

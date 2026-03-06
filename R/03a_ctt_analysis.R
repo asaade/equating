@@ -401,26 +401,7 @@ analyze_distractor_efficiency <- function(raw_df, scored_df, items) {
 # 3. ORQUESTADOR CTT
 # ==============================================================================
 
-run_ctt_analysis <- function(calib_df, data_obj, config) {
-  metadata <- data_obj$meta
-
-  # 1. NORMALIZACIÓN DE SCORED DF (Calibración)
-  # Traduce P_XX -> ITEM_ID
-  norm_calib <- normalize_item_columns(calib_df, metadata, config)
-
-  if (length(norm_calib$items) < 5) {
-    error("CTT Abortado: No se identificaron items válidos tras normalización.")
-    return(NULL)
-  }
-  calib_clean <- norm_calib$df
-  all_items <- norm_calib$items
-
-  # 2. NORMALIZACIÓN DE RAW DF (Para Distractores)
-  # Traduce P_XX -> ITEM_ID en la data cruda (letras)
-  norm_raw <- normalize_item_columns(data_obj$raw_dat, metadata, config)
-  raw_clean <- norm_raw$df
-
-  # 3. ANÁLISIS ESTADÍSTICO POR FORMA
+perform_statistical_analysis_by_form <- function(calib_clean, all_items, config) {
   stats_list <- list()
   rel_stats <- list()
   dim_flags <- list()
@@ -471,63 +452,103 @@ run_ctt_analysis <- function(calib_df, data_obj, config) {
     )
   }
 
-  master_stats <- do.call(rbind, stats_list)
-  master_rel <- do.call(rbind, rel_stats)
-  master_dim <- do.call(rbind, dim_flags)
-
-  # 4. ANÁLISIS DE DISTRACTORES
-  common_ids <- intersect(calib_clean$ID, raw_clean$ID)
-
-  if (length(common_ids) == 0) {
-    warn("CTT: No hay coincidencia de IDs entre Raw y Scored. Omitiendo distractores.")
-    distractors <- NULL
-  } else {
-    # Alinear dataframes por ID
-    calib_aligned <- calib_clean |>
-      dplyr::filter(ID %in% common_ids) |>
-      dplyr::arrange(ID)
-    raw_aligned <- raw_clean |>
-      dplyr::filter(ID %in% common_ids) |>
-      dplyr::arrange(ID)
-
-    debug(sprintf("   Analizando Distractores (%d casos)...", length(common_ids)))
-
-    # Ejecutar análisis pasando dataframes normalizados
-    distractors <- analyze_distractor_efficiency(raw_aligned, calib_aligned, all_items)
-
-    if (!is.null(distractors)) {
-      distractors <- distractors |> mutate(across(where(is.numeric), ~ round(.x, 3)))
-    }
-  }
-
-
-  # 5. INTEGRACIÓN DE CLAVES Y BANDERAS (FLAGS)
-  if (!is.null(distractors) && !is.null(metadata)) {
-    keys <- metadata |>
-      dplyr::select(ITEM_ID, KEY) |>
-      dplyr::distinct()
-
-    distractors <- distractors |>
-      dplyr::left_join(keys, by = c("ITEM" = "ITEM_ID")) |>
-      dplyr::mutate(
-        IS_KEY = (toupper(trimws(OPTION)) == toupper(trimws(KEY))),
-
-        # Banderas de Alerta
-        FLAG = dplyr::case_when(
-          IS_KEY & (R_BIS_OPT < 0.0) ~ "NEG_KEY", # La clave correlaciona negativamente (Grave)
-          IS_KEY & (R_BIS_OPT < config$thresholds$ctt_pbis_min) ~ "LOW_KEY", # La clave no discrimina
-          !IS_KEY & (R_BIS_OPT > config$threshold$ctt_distractor_max_pbis) ~ "POS_PBIS", # Distractor atrae a los buenos (Confuso)
-          !IS_KEY & (PROP > 0.40) ~ "HIGH_DIST", # Distractor muy popular
-          !IS_KEY & (PROP <= 0.05) ~ "LOW_DIST",
-          TRUE ~ "OK"
-        )
-      )
-  }
+  master_stats <- if (length(stats_list) > 0) do.call(rbind, stats_list) else NULL
+  master_rel <- if (length(rel_stats) > 0) do.call(rbind, rel_stats) else NULL
+  master_dim <- if (length(dim_flags) > 0) do.call(rbind, dim_flags) else NULL
 
   list(
     stats = master_stats,
     reliability = master_rel,
-    dimensionality = master_dim,
+    dimensionality = master_dim
+  )
+}
+
+perform_distractor_analysis <- function(calib_clean, raw_clean, all_items) {
+  common_ids <- intersect(calib_clean$ID, raw_clean$ID)
+
+  if (length(common_ids) == 0) {
+    warn("CTT: No hay coincidencia de IDs entre Raw y Scored. Omitiendo distractores.")
+    return(NULL)
+  }
+
+  # Alinear dataframes por ID
+  calib_aligned <- calib_clean |>
+    dplyr::filter(ID %in% common_ids) |>
+    dplyr::arrange(ID)
+  raw_aligned <- raw_clean |>
+    dplyr::filter(ID %in% common_ids) |>
+    dplyr::arrange(ID)
+
+  debug(sprintf("   Analizando Distractores (%d casos)...", length(common_ids)))
+
+  # Ejecutar análisis pasando dataframes normalizados
+  distractors <- analyze_distractor_efficiency(raw_aligned, calib_aligned, all_items)
+
+  if (!is.null(distractors)) {
+    distractors <- distractors |> dplyr::mutate(dplyr::across(tidyselect::where(is.numeric), ~ round(.x, 3)))
+  }
+
+  distractors
+}
+
+integrate_keys_and_flags <- function(distractors, metadata, config) {
+  if (is.null(distractors) || is.null(metadata)) {
+    return(distractors)
+  }
+
+  keys <- metadata |>
+    dplyr::select(ITEM_ID, KEY) |>
+    dplyr::distinct()
+
+  distractors |>
+    dplyr::left_join(keys, by = c("ITEM" = "ITEM_ID")) |>
+    dplyr::mutate(
+      IS_KEY = (toupper(trimws(OPTION)) == toupper(trimws(KEY))),
+
+      # Banderas de Alerta
+      FLAG = dplyr::case_when(
+        IS_KEY & (R_BIS_OPT < 0.0) ~ "NEG_KEY", # La clave correlaciona negativamente (Grave)
+        IS_KEY & (R_BIS_OPT < config$thresholds$ctt_pbis_min) ~ "LOW_KEY", # La clave no discrimina
+        !IS_KEY & (R_BIS_OPT > config$thresholds$ctt_distractor_max_pbis) ~ "POS_PBIS", # Distractor atrae a los buenos (Confuso)
+        !IS_KEY & (PROP > 0.40) ~ "HIGH_DIST", # Distractor muy popular
+        !IS_KEY & (PROP <= 0.05) ~ "LOW_DIST",
+        TRUE ~ "OK"
+      )
+    )
+}
+
+run_ctt_analysis <- function(calib_df, data_obj, config) {
+  metadata <- data_obj$meta
+
+  # 1. NORMALIZACIÓN DE SCORED DF (Calibración)
+  # Traduce P_XX -> ITEM_ID
+  norm_calib <- normalize_item_columns(calib_df, metadata, config)
+
+  if (length(norm_calib$items) < 5) {
+    error("CTT Abortado: No se identificaron items válidos tras normalización.")
+    return(NULL)
+  }
+  calib_clean <- norm_calib$df
+  all_items <- norm_calib$items
+
+  # 2. NORMALIZACIÓN DE RAW DF (Para Distractores)
+  # Traduce P_XX -> ITEM_ID en la data cruda (letras)
+  norm_raw <- normalize_item_columns(data_obj$raw_dat, metadata, config)
+  raw_clean <- norm_raw$df
+
+  # 3. ANÁLISIS ESTADÍSTICO POR FORMA
+  form_stats <- perform_statistical_analysis_by_form(calib_clean, all_items, config)
+
+  # 4. ANÁLISIS DE DISTRACTORES
+  distractors <- perform_distractor_analysis(calib_clean, raw_clean, all_items)
+
+  # 5. INTEGRACIÓN DE CLAVES Y BANDERAS (FLAGS)
+  distractors <- integrate_keys_and_flags(distractors, metadata, config)
+
+  list(
+    stats = form_stats$stats,
+    reliability = form_stats$reliability,
+    dimensionality = form_stats$dimensionality,
     distractors = distractors
   )
 }
