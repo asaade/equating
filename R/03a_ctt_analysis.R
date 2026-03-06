@@ -240,18 +240,21 @@ check_dimensionality <- function(item_mat, threshold_ratio = 3, threshold_var = 
 
   # 2. Análisis Bi-factor y cálculo de Omega Jerárquico/ECV
   # Se extraen factores de grupo para determinar la estructura bi-factor
-  n_factors <- 3 # max(kaiser_factors, 3)
+  # Ajustar dinámicamente el número de factores para no fallar con pocos ítems
+  n_factors <- max(1, min(3, floor(k / 3)))
   om_res <- tryCatch(
     {
-      psych::omega(item_mat, nfactors = n_factors, poly = TRUE, plot = FALSE)
+      # Usar cor_mat en lugar de item_mat ahorra tiempo (evita re-calcular tetrachoric)
+      psych::omega(cor_mat, nfactors = n_factors, plot = FALSE)
     },
     error = function(e) {
       return(NULL)
     }
   )
 
-  omega_h <- if (!is.null(om_res)) om_res$omega_h else NA
-  ecv <- if (!is.null(om_res)) om_res$ECV else NA
+  # Extraer como numérico sin nombres para evitar problemas de compatibilidad en data.frames posteriores
+  omega_h <- if (!is.null(om_res)) as.numeric(om_res$omega_h) else NA_real_
+  ecv <- if (!is.null(om_res)) as.numeric(om_res$ECV[1]) else NA_real_
 
   # 3. Cálculo del Porcentaje de Correlaciones no Contaminadas (PUC)
   puc <- NA
@@ -287,6 +290,14 @@ check_dimensionality <- function(item_mat, threshold_ratio = 3, threshold_var = 
     }
   }
 
+  # 6. Cálculo de índice unidimensional adicional (u)
+  u_val <- NA_real_
+  try({
+    # Usar cor_mat pre-calculada
+    ud <- psych::unidim(cor_mat)
+    u_val <- as.numeric(ud$uni$u)
+  }, silent = TRUE)
+
   list(
     status = if (is_unidim) "ESSENTIAL_UNIDIM_OK" else "MULTIDIMENSIONAL_DETECTED",
     suggested_factors = kaiser_factors,
@@ -294,7 +305,7 @@ check_dimensionality <- function(item_mat, threshold_ratio = 3, threshold_var = 
     omega_hierarchical = round(omega_h, 3),
     explained_common_variance = round(ecv, 3),
     eigen_ratio = round(ratio, 2),
-    U = as.list(psych::unidim(item_mat, cor = "tet")$uni)$u
+    U = round(u_val, 3)
   )
 }
 
@@ -448,7 +459,7 @@ perform_statistical_analysis_by_form <- function(calib_clean, all_items, config)
       Kaiser = dim$suggested_factors,
       Omega = dim$omega_hierarchical,
       PUC = dim$puc,
-      U = as.list(psych::unidim(mat, cor = "tet")$uni)$u
+      U = dim$U
     )
   }
 
