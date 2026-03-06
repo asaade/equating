@@ -149,9 +149,7 @@ run_dif_analysis <- function(response_df, demographic_df, item_names, config, sc
     return(stage1_res)
   }
 
-<<<<<<< HEAD
   # ETAPA 2: PURIFICACIÓN
-=======
   current_df |> filter(!is.na(Bin))
 }
 
@@ -260,8 +258,7 @@ calculate_mh_stats <- function(df, items_to_test, matching_items, ref_grp, foc_g
 #' @param foc_grp Grupo focal.
 #' @return Resultados finales de DIF.
 perform_dif_purification <- function(df_proc, stage1_res, item_names, ref_grp, foc_grp) {
->>>>>>> origin/main
-  # Identificar ítems 'C' (Severos) para excluirlos del score de matching
+# Identificar ítems 'C' (Severos) para excluirlos del score de matching
   bad_items <- stage1_res |>
     filter(FLAG == "C (Large)") |>
     pull(ITEM)
@@ -280,11 +277,7 @@ perform_dif_purification <- function(df_proc, stage1_res, item_names, ref_grp, f
 
     # Recalcular DIF para todos los ítems usando el score purificado
     debug("DIF: Etapa 2 (Recálculo Purificado)...")
-<<<<<<< HEAD
-    final_res <- calculate_mh_stats(df_proc, item_names)
-=======
     final_res <- calculate_mh_stats(df_proc, item_names, valid_items_for_score, ref_grp, foc_grp)
->>>>>>> origin/main
     return(final_res)
   } else {
     debug("DIF: No se detectaron ítems con DIF severo en Etapa 1. Purificación no requerida.")
@@ -292,8 +285,6 @@ perform_dif_purification <- function(df_proc, stage1_res, item_names, ref_grp, f
   }
 }
 
-<<<<<<< HEAD
-=======
 #' Ejecuta análisis DIF (Mantel-Haenszel) con opción de Purificación
 #' @param response_df Dataframe de respuestas.
 #' @param demographic_df Dataframe de datos demográficos.
@@ -333,8 +324,6 @@ run_dif_analysis <- function(response_df, demographic_df, item_names, config, sc
   # ETAPA 2: PURIFICACIÓN
   return(perform_dif_purification(df_proc, stage1_res, item_names, ref_grp, foc_grp))
 }
-
->>>>>>> origin/main
 
 # ==============================================================================
 # 7. DIF EXPORT
