@@ -98,7 +98,7 @@ qa_summary <- tryCatch(
     config      = config,
     output_path = file.path(config$project$output_dir, "lectura_datos.txt")
   ),
-  error = function(e) warn(paste("QA Report Error:", e$message))
+  error = function(e) warn(paste("QA Report Error:", sanitize_error_msg(e)))
 )
 
 track_stage(audit, "Ingesta", input = NULL, output = data_obj, output_dir_root = config$project$output_dir)
