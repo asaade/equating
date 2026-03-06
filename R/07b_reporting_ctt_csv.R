@@ -33,7 +33,7 @@ write_psych_csv <- function(data, base_dir, sub_folder, file_name) {
       return(TRUE)
     },
     error = function(e) {
-      message(paste("Error al exportar:", file_name, "-", e$message))
+      message(paste("Error al exportar:", file_name, "-", sanitize_error_msg(e)))
       return(FALSE)
     }
   )

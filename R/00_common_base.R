@@ -147,7 +147,39 @@ error <- function(msg, ctx = NULL) log_msg("error", msg, ctx)
 fatal <- function(msg, ctx = NULL) log_msg("fatal", msg, ctx)
 
 # ==============================================================================
-# 4. EJECUCIÓN SEGURA (Try-Catch Wrappers)
+# 4. SEGURIDAD Y SANITIZACIÓN
+# ==============================================================================
+
+#' Sanitiza mensajes de error para evitar fugas de información sensible (PII o contenido de archivos)
+#' @param e Objeto de error (condition)
+#' @return Cadena de texto sanitizada
+sanitize_error_msg <- function(e) {
+  msg <- conditionMessage(e)
+
+  # 1. Snippets de contenido (comunes en readr/vroom)
+  # Ejemplo: "Trailing characters: some_data" -> "Trailing characters: [REDACTED]"
+  msg <- gsub("(?i)(trailing characters:).*", "\\1 [REDACTED]", msg, perl = TRUE)
+  msg <- gsub("(?i)(unsupported type at column).*", "\\1 [REDACTED]", msg, perl = TRUE)
+  msg <- gsub("(?i)(expected [0-9]+ columns, actual [0-9]+ columns in record [0-9]+:).*", "\\1 [REDACTED]", msg, perl = TRUE)
+
+  # 2. Rutas locales (evitar revelar estructura de directorios)
+  # Reemplaza rutas que parezcan absolutas o relativas profundas
+  msg <- gsub("(/[a-zA-Z0-9._-]+){2,}", "[PATH]", msg)
+  msg <- gsub("[a-zA-Z]:(\\\\[a-zA-Z0-9._-]+){2,}", "[PATH]", msg)
+
+  # 3. Direcciones de memoria
+  msg <- gsub("0x[0-9a-fA-F]+", "[ADDR]", msg)
+
+  # Truncado de seguridad
+  if (nchar(msg) > 500) {
+    msg <- paste0(substr(msg, 1, 497), "...")
+  }
+
+  return(msg)
+}
+
+# ==============================================================================
+# 5. EJECUCIÓN SEGURA (Try-Catch Wrappers)
 # ==============================================================================
 
 execute_safely <- function(expr, desc) {
@@ -180,7 +212,7 @@ execute_safely <- function(expr, desc) {
       error(
         sprintf(
           "FALLO CRÍTICO en '%s': %s (Call: %s)",
-          desc, conditionMessage(e), deparse(error_call)
+          desc, sanitize_error_msg(e), deparse(error_call)
         ),
         ctx = actual_ctx
       )
@@ -191,7 +223,7 @@ execute_safely <- function(expr, desc) {
 }
 
 # ==============================================================================
-# 5. I/O SEGURO
+# 6. I/O SEGURO
 # ==============================================================================
 
 save_safe <- function(obj, path) {
@@ -214,8 +246,8 @@ save_safe <- function(obj, path) {
       return(TRUE)
     },
     error = function(e) {
-      error(paste("Error escritura:", basename(path), e$message), "IO")
-      .sys_audit_env$write_errors[[basename(path)]] <- e$message
+      error(paste("Error escritura:", basename(path), sanitize_error_msg(e)), "IO")
+      .sys_audit_env$write_errors[[basename(path)]] <- sanitize_error_msg(e)
       return(FALSE)
     }
   )
@@ -234,14 +266,14 @@ save_plot_safe <- function(plot_obj, filename, width, height) {
       return(TRUE)
     },
     error = function(e) {
-      error(paste("Error gráfico:", basename(filename), e$message), "Plot")
+      error(paste("Error gráfico:", basename(filename), sanitize_error_msg(e)), "Plot")
       return(FALSE)
     }
   )
 }
 
 # ==============================================================================
-# 6. TRAZABILIDAD (Audit Trail)
+# 7. TRAZABILIDAD (Audit Trail)
 # ==============================================================================
 
 init_audit_trail <- function() {
