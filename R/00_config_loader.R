@@ -24,6 +24,7 @@ if (file.exists("R/00_config_defs.R")) {
 load_project_config <- function(yaml_path = "config.yaml", defs_path = "R/00_config_defs.R") {
   # 1. CARGA E INTEGRIDAD INICIAL
   if (!file.exists(defs_path)) stop("FATAL: Archivo de definiciones base no encontrado.")
+  if (!is_safe_r_path(defs_path)) stop("FATAL: Intento de cargar definición desde ruta no segura.")
   source(defs_path)
   defaults <- get_default_config()
 
@@ -174,6 +175,13 @@ load_module_safe <- function(path) {
     fatal(sprintf("Módulo perdido: %s", path), "Loader")
     return(FALSE)
   }
+
+  # Validación de seguridad de la ruta
+  if (!is_safe_r_path(path)) {
+    fatal(sprintf("Intento de carga de módulo desde ruta no segura: %s", path), "Loader")
+    return(FALSE)
+  }
+
   tryCatch(
     {
       source(path, local = FALSE, encoding = "UTF-8")

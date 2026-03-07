@@ -191,7 +191,49 @@ execute_safely <- function(expr, desc) {
 }
 
 # ==============================================================================
-# 5. I/O SEGURO
+# 5. SEGURIDAD Y VALIDACIÓN DE RUTAS
+# ==============================================================================
+
+#' Valida si una ruta de script R es segura para ser ejecutada via source()
+#' @param path Ruta al archivo
+#' @return BOOLEAN indicando si es segura
+is_safe_r_path <- function(path) {
+  if (is.null(path) || !is.character(path) || length(path) != 1 || path == "") {
+    return(FALSE)
+  }
+
+  # 1. Normalización de ruta
+  # Usamos suppressWarnings porque normalizePath advierte si el archivo no existe
+  abs_path <- tryCatch(suppressWarnings(normalizePath(path, mustWork = FALSE)), error = function(e) NULL)
+  if (is.null(abs_path)) return(FALSE)
+
+  # 2. Obtener el root del proyecto (Directorio de trabajo actual)
+  root <- tryCatch(suppressWarnings(normalizePath(getwd(), mustWork = TRUE)), error = function(e) NULL)
+  if (is.null(root)) return(FALSE)
+
+  # 3. Verificar que esté dentro del root del proyecto de forma segura
+  # Agregamos el separador de archivos al final del root para evitar coincidencias de prefijo
+  # como "/app" vs "/app_fake"
+  sep <- .Platform$file.sep
+  root_with_sep <- if (grepl(paste0(if (.Platform$OS.type == "windows") "\\\\" else "/", "$"), root)) root else paste0(root, sep)
+
+  is_inside <- substr(abs_path, 1, nchar(root_with_sep)) == root_with_sep
+
+  # 4. Verificar extensión .R o .r
+  is_r_file <- grepl("\\.[Rr]$", abs_path)
+
+  if (!(is_inside && is_r_file)) {
+    # Logging de intento sospechoso si el archivo existe pero está fuera de rango
+    if (file.exists(path)) {
+      warn(sprintf("Intento de acceso a ruta no autorizada o inválida: %s", path), "Security")
+    }
+  }
+
+  return(is_inside && is_r_file)
+}
+
+# ==============================================================================
+# 6. I/O SEGURO
 # ==============================================================================
 
 save_safe <- function(obj, path) {

@@ -4,9 +4,10 @@
 # ==============================================================================
 
 if (!exists("execute_safely", mode = "function")) {
-  if (file.exists("R/00_common.R")) {
-    source("R/00_common.R")
-  } else if (file.exists("00_common.R")) source("00_common.R")
+  common_path <- "R/00_common_base.R"
+  if (file.exists(common_path)) {
+    source(common_path)
+  }
 }
 
 # ------------------------------------------------------------------------------
@@ -39,6 +40,10 @@ if (!exists("execute_safely", mode = "function")) {
     for (path in search_paths) {
       full_path <- file.path(path, lib)
       if (file.exists(full_path)) {
+        if (exists("is_safe_r_path") && !is_safe_r_path(full_path)) {
+          warn(sprintf("Intento de carga de librería desde ruta no segura: %s", full_path), "AuditLoader")
+          next
+        }
         tryCatch(
           {
             source(full_path, local = FALSE) # local=FALSE asegura que funciones vayan al GlobalEnv

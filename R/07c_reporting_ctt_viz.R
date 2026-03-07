@@ -25,6 +25,10 @@ load_audit_modules <- function(script_dir = "./R/plots_lib") {
   for (mod in modules) {
     fpath <- file.path(script_dir, mod)
     if (file.exists(fpath)) {
+      if (exists("is_safe_r_path") && !is_safe_r_path(fpath)) {
+        warn(sprintf("Intento de carga de módulo desde ruta no segura: %s", fpath), "VizLoader")
+        next
+      }
       tryCatch(
         {
           source(fpath, local = FALSE)

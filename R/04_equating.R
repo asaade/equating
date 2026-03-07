@@ -17,9 +17,17 @@ core_libs <- c(
 for (lib in core_libs) {
   path <- file.path("R", "equating_lib", lib)
   if (file.exists(path)) {
-    source(path, local = FALSE)
+    if (is_safe_r_path(path)) {
+      source(path, local = FALSE)
+    } else {
+      warn(sprintf("Omitiendo carga de librería no segura: %s", path), "Equating")
+    }
   } else if (file.exists(lib)) {
-    source(lib, local = FALSE)
+    if (is_safe_r_path(lib)) {
+      source(lib, local = FALSE)
+    } else {
+      warn(sprintf("Omitiendo carga de librería no segura: %s", lib), "Equating")
+    }
   }
 }
 
