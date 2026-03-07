@@ -3,7 +3,13 @@
 # Versión: v1.0
 # Dependencias: equate
 
-if (!exists("info")) source("R/00_common_base.R")
+if (!exists("info")) {
+  base_path <- "R/00_common_base.R"
+  if (exists("is_safe_r_path") && !is_safe_r_path(base_path)) {
+    stop(sprintf("Fallo de seguridad: Intento de cargar base desde ruta no segura (%s)", base_path))
+  }
+  source(base_path)
+}
 
 # =============================================================================
 # 1. HELPERS DE EXTRACCIÓN Y CÁLCULO
