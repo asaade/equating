@@ -599,7 +599,8 @@ step_4_finalize <- function(decision, stats_raw, smooth_res, refine, items_src, 
       model_params = model_params_audit,
       smoothing_history = smoothing_audit_list,
       decision_log = decision$metrics_table,
-      traffic_light = list(color = tl_status, flags = qc_res$status_flags$global_status, metrics = qc_res$metrics)
+      traffic_light = list(color = tl_status, flags = qc_res$status_flags$global_status, metrics = qc_res$metrics),
+      smoothing_coefficients = if (!is.null(smooth_res)) list(src = smooth_res$src$model_meta$coefficients, dest = smooth_res$dest$model_meta$coefficients) else NULL
     )
   )
 
