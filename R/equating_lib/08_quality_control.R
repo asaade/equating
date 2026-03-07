@@ -3,8 +3,13 @@
 # Refactor: v1.0
 # Dependencias: 09_ux_helpers.R, 00_config_defs.R
 
-source("R/equating_lib/09_ux_helpers.R")
-source("R/00_config_defs.R")
+# Dependencias internas protegidas
+for (dep in c("R/equating_lib/09_ux_helpers.R", "R/00_config_defs.R")) {
+  if (exists("is_safe_r_path") && !is_safe_r_path(dep)) {
+    stop(sprintf("Fallo de seguridad: Intento de cargar librería desde ruta no segura (%s)", dep))
+  }
+  source(dep)
+}
 
 # -----------------------------------------------------------------------------
 # 1. VERIFICACIONES ESTRUCTURALES (Hard Constraints)
