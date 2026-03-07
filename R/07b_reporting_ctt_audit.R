@@ -225,6 +225,22 @@ print_audit_drift <- function(drift) {
 
 print_audit_critical <- function(crit_tab) {
   if (!is.null(crit_tab) && nrow(crit_tab) > 0) {
+    # --- FIX: Detección segura de columnas (Case-Insensitive) ---
+    col_names <- names(crit_tab)
+    col_names_up <- toupper(col_names)
+
+    col_form <- col_names[match(toupper(c("FORM", "FORMA", "SOURCE_FORM")), col_names_up)[1]]
+    col_cut  <- col_names[match(toupper(c("TARGET_CUT_RAW_REF", "EST_RAW_CUT", "CUT_SCORE")), col_names_up)[1]]
+    col_eq   <- col_names[match(toupper(c("EQUATED_AT_CUT", "EQUATED", "EQUATED_SCORE")), col_names_up)[1]]
+    col_see  <- col_names[match(toupper(c("SEE_AT_CUT", "SEE", "ERROR")), col_names_up)[1]]
+    col_tre  <- col_names[match(toupper(c("TRE_AT_CUT", "TRE")), col_names_up)[1]]
+
+    # Si faltan columnas críticas, abortar con mensaje
+    if (is.na(col_form) || is.na(col_cut) || is.na(col_eq)) {
+      cat("\n[WARN] No se pudieron identificar las columnas necesarias en crit_tab para auditoría de cortes.\n")
+      return()
+    }
+
     print_header("5. PRECISIÓN EN PUNTOS DE CORTE")
     cat(paste0(
       pad_str("FORM", 12), pad_str("CUT", 6, "right"), pad_str("EQ_SCORE", 9, "right"),
@@ -233,13 +249,20 @@ print_audit_critical <- function(crit_tab) {
     ))
     cat(paste0(strrep("-", 100), "\n"))
 
-    ci_l <- crit_tab$EQUATED_AT_CUT - (1.96 * crit_tab$SEE_AT_CUT)
-    ci_u <- crit_tab$EQUATED_AT_CUT + (1.96 * crit_tab$SEE_AT_CUT)
-    ci_str <- sprintf("[%5.2f, %5.2f]", ci_l, ci_u)
+    val_eq  <- as.numeric(crit_tab[[col_eq]])
+    val_see <- if (!is.na(col_see)) as.numeric(crit_tab[[col_see]]) else rep(NA_real_, nrow(crit_tab))
+    val_tre <- if (!is.na(col_tre)) as.numeric(crit_tab[[col_tre]]) else rep(NA_real_, nrow(crit_tab))
+
+    ci_l <- val_eq - (1.96 * val_see)
+    ci_u <- val_eq + (1.96 * val_see)
+    ci_str <- ifelse(!is.na(val_see), sprintf("[%5.2f, %5.2f]", ci_l, ci_u), "N/A")
 
     lines <- paste0(
-      pad_str(crit_tab$FORM, 12), fmt_num(crit_tab$TARGET_CUT_RAW_REF, 0, 6), fmt_num(crit_tab$EQUATED_AT_CUT, 2, 9),
-      fmt_num(crit_tab$SEE_AT_CUT, 3, 8), fmt_num(crit_tab$TRE_AT_CUT, 3, 8), " | ",
+      pad_str(crit_tab[[col_form]], 12),
+      fmt_num(crit_tab[[col_cut]], 0, 6),
+      fmt_num(val_eq, 2, 9),
+      fmt_num(val_see, 3, 8),
+      fmt_num(val_tre, 3, 8), " | ",
       pad_str(ci_str, 18), "\n"
     )
     cat(paste(lines, collapse = ""))
