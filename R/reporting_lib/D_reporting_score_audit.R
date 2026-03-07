@@ -5,25 +5,7 @@
 #              y análisis de impacto adverso (Fairness).
 # ==============================================================================
 
-# --- FUNCIONES AUXILIARES ---
-pad_str <- function(x, width, align = "left") {
-  x <- as.character(x)
-  if (is.na(x) || length(x) == 0) x <- ""
-  if (nchar(x) > width) x <- substr(x, 1, width)
-  if (align == "right") formatC(x, width = width, flag = "") else formatC(x, width = width, flag = "-")
-}
-
-print_header <- function(title) {
-  cat(paste0(strrep("=", 80), "\n"))
-  cat(paste0("  ", title, "\n"))
-  cat(paste0(strrep("=", 80), "\n"))
-}
-
-print_section <- function(title) {
-  cat(paste0("\n", strrep("-", 80), "\n"))
-  cat(paste0(">>> ", title, "\n"))
-  cat(paste0(strrep("-", 80), "\n"))
-}
+# (Formatting functions removed, now using utils_report.R)
 
 # ==============================================================================
 # FUNCIÓN PRINCIPAL

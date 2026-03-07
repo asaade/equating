@@ -17,10 +17,12 @@ if (!exists("execute_safely", mode = "function")) {
 #' @keywords internal
 .load_audit_libraries <- function() {
   libs <- c(
+    "utils_report.R",
     "A_reporting_item_audit.R",
     "B_reporting_confiabilidad_audit.R",
     "C_reporting_eq_audit.R",
-    "D_reporting_score_audit.R"
+    "D_reporting_score_audit.R",
+    "E_reporting_subtest_audit.R"
   )
 
   search_paths <- c(
@@ -186,6 +188,23 @@ run_full_psychometric_audit <- function(data_obj,
         "COMPLETADO"
       },
       "Módulo D (Impacto de Puntuaciones)"
+    )
+
+    # --- Módulo E: Detalle de Subtests ---
+    exec_states$subtests <- run_mod(
+      {
+        audit_subtest_analysis(
+          final_scores = final_scores,
+          ctt_stats     = ctt_results$stats,
+          eq_results   = eq_results,
+          meta         = data_obj$meta,
+          raw_dat      = data_obj$raw_dat,
+          base_dir     = report_dir,
+          config       = config
+        )
+        "COMPLETADO"
+      },
+      "Módulo E (Análisis de Subtests)"
     )
   } else {
     debug("Se omiten Módulos D/E: Puntuaciones no disponibles.")
