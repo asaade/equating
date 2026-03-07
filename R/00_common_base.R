@@ -19,7 +19,8 @@ pacman::p_load(
   utils,
   tools,
   ggplot2,
-  Cairo
+  Cairo,
+  testthat
 )
 
 # Configuración Regional
