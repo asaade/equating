@@ -4,12 +4,20 @@
 # Dependencias: 00_config_defs.R, 01_anchor_mgmt.R, 07_model_selector.R, 08_quality_control.R
 
 # Dependencias internas protegidas
-for (dep in c("R/equating_lib/01_anchor_mgmt.R", "R/equating_lib/07_model_selector.R", "R/equating_lib/08_quality_control.R")) {
-  if (exists("is_safe_r_path") && !is_safe_r_path(dep)) {
-    stop(sprintf("Fallo de seguridad: Intento de cargar librería desde ruta no segura (%s)", dep))
-  }
-  source(dep)
+if (exists("is_safe_r_path") && !is_safe_r_path("R/equating_lib/01_anchor_mgmt.R")) {
+  stop(sprintf("Fallo de seguridad: Intento de cargar librería desde ruta no segura (%s)", "R/equating_lib/01_anchor_mgmt.R"))
 }
+source("R/equating_lib/01_anchor_mgmt.R")
+
+if (exists("is_safe_r_path") && !is_safe_r_path("R/equating_lib/07_model_selector.R")) {
+  stop(sprintf("Fallo de seguridad: Intento de cargar librería desde ruta no segura (%s)", "R/equating_lib/07_model_selector.R"))
+}
+source("R/equating_lib/07_model_selector.R")
+
+if (exists("is_safe_r_path") && !is_safe_r_path("R/equating_lib/08_quality_control.R")) {
+  stop(sprintf("Fallo de seguridad: Intento de cargar librería desde ruta no segura (%s)", "R/equating_lib/08_quality_control.R"))
+}
+source("R/equating_lib/08_quality_control.R")
 
 if (!exists("%||%")) {
   `%||%` <- function(a, b) if (!is.null(a)) a else b
