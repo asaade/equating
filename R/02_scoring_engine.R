@@ -26,6 +26,29 @@ calculate_long_string <- function(row_vec) {
 }
 
 validate_input_integrity <- function(raw_df, map) {
+  # 1. Verificar que el DataFrame de entrada no esté vacío
+  if (nrow(raw_df) == 0) {
+    stop("FATAL: DataFrame 'raw_df' está vacío.")
+  }
+
+  # 2. Verificar que el Mapa de Diseño no esté vacío
+  if (is.null(map) || nrow(map) == 0) {
+    stop("FATAL: El Mapa de Diseño ('map') está vacío o es NULL.")
+  }
+
+  # 3. Verificar que todas las formas presentes en los datos existan en el mapa
+  formas_datos <- unique(as.character(raw_df$FORMA))
+  formas_mapa <- unique(as.character(map$FORMA_CODE))
+  formas_faltantes <- setdiff(formas_datos, formas_mapa)
+
+  if (length(formas_faltantes) > 0) {
+    stop(sprintf(
+      "FATAL: Se detectaron formas en los datos que no están definidas en el mapa: %s",
+      paste(formas_faltantes, collapse = ", ")
+    ))
+  }
+
+  # 4. Verificar integridad de columnas
   required_cols <- unique(map$COL_NAME_RAW)
   missing_cols <- setdiff(required_cols, colnames(raw_df))
 

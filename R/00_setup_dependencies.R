@@ -13,7 +13,8 @@ required_packages <- c(
   "gridExtra", # Arreglos de gráficos
   "scales", # Formato de ejes (porcentajes, etc.)
   "ggrepel", # Etiquetas de texto que no se superponen
-  "tinytex" # Distribución ligera de LaTeX
+  "tinytex", # Distribución ligera de LaTeX
+  "testthat" # Framework de pruebas unitarias
 )
 
 # 2. Instalar paquetes faltantes
