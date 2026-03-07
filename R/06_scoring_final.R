@@ -29,11 +29,13 @@ extract_anchors_from_levels <- function(levels_cfg, max_input_val) {
     return(NULL)
   }
 
-  pts_list <- list()
-  for (lvl in levels_cfg) {
+  # Optimizamos evitando el crecimiento iterativo de una lista en un bucle for.
+  # Usamos lapply para generar una lista de data frames y luego los combinamos una sola vez.
+  pts_raw_list <- lapply(levels_cfg, function(lvl) {
+    inner_pts <- list()
     # Puntos intermedios (Cortes)
     if (!is.null(lvl$min_score) && !is.null(lvl$scaled_score)) {
-      pts_list[[length(pts_list) + 1]] <- data.frame(
+      inner_pts[[length(inner_pts) + 1]] <- data.frame(
         input = as.numeric(lvl$min_score),
         target = as.numeric(lvl$scaled_score)
       )
@@ -42,17 +44,30 @@ extract_anchors_from_levels <- function(levels_cfg, max_input_val) {
     if (!is.null(lvl$max_scaled_score)) {
       # Asumimos que el techo de la escala corresponde al máximo input posible
       # (Max Theta para IRT o Max Raw Score para CTT)
-      pts_list[[length(pts_list) + 1]] <- data.frame(
+      inner_pts[[length(inner_pts) + 1]] <- data.frame(
         input = as.numeric(max_input_val),
         target = as.numeric(lvl$max_scaled_score)
       )
     }
-  }
 
-  if (length(pts_list) == 0) {
+    if (length(inner_pts) == 0) {
+      return(NULL)
+    }
+    if (length(inner_pts) == 1) {
+      return(inner_pts[[1]])
+    }
+    do.call(rbind, inner_pts)
+  })
+
+  # Filtrar elementos NULL y combinar
+  # vapply es más eficiente que lapply para verificaciones de tipo lógico
+  pts_filtered <- pts_raw_list[!vapply(pts_raw_list, is.null, logical(1))]
+
+  if (length(pts_filtered) == 0) {
     return(NULL)
   }
-  do.call(rbind, pts_list)
+
+  do.call(rbind, pts_filtered)
 }
 
 apply_piecewise_mapping <- function(input_vec, config, source_type = "CTT", max_input_val = NULL) {
