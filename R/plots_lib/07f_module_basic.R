@@ -278,25 +278,6 @@ plot_score_comparison_violin <- function(final_scores, cuts_df = NULL, ref_form_
       dplyr::select(EQUATED) |>
       dplyr::distinct()
 
-    ## if (!is.null(ref_form_id) && ref_form_id %in% cuts_df[[col_form]]) {
-    ##   # Usar cortes de la referencia como fuente de verdad
-
-    ##   cuts_df |> dplyr::filter(!!sym(col_form) == ref_form_id)
-    ## } else {
-    ##   # Redondear y unificar si no hay referencia explícita
-    ##   if ("LABEL" %in% names(cuts_df)) {
-    ##     cuts_viz <- cuts_df |>
-    ##       dplyr::mutate(EQUATED = round(EQUATED_AT_CUT)) |>
-    ##       dplyr::group_by(LABEL) |>
-    ##       dplyr::summarise(EQUATED = mean(TARGET_CUT_RAW_REF, na.rm = TRUE), .groups = "drop")
-    ##   } else {
-    ##     cuts_viz <- cuts_df |>
-    ##       dplyr::mutate(EQUATED = round(TARGET_CUT_RAW_REF)) |>
-    ##       dplyr::select(EQUATED) |>
-    ##       dplyr::distinct()
-    ##   }
-    ## }
-
     # B. Calcular Proporciones usando los cortes unificados
     cut_vals <- sort(unique(cuts_viz$EQUATED))
     breaks <- c(-Inf, cut_vals, Inf)
@@ -401,7 +382,7 @@ export_module_f_basic <- function(ctt_results, eq_results, final_scores, config,
     }
   }
 
-  ## # B. HISTOGRAMAS (Con Referencia Overlay)
+  # B. HISTOGRAMAS (Con Referencia Overlay)
   p_hist <- plot_raw_score_multiform(final_scores, ctt_results$reliability, ref_form_id)
   save_plot_safe(p_hist, file.path(base_dir, "F03_Raw_Score_Distribution.pdf"), width = 8, height = 8)
 
