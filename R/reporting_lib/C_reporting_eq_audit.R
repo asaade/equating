@@ -265,21 +265,46 @@ audit_05_drift <- function(drift) {
 
 audit_06_cuts <- function(crit_tab) {
   if (!is.null(crit_tab) && nrow(crit_tab) > 0) {
+    # --- FIX: Detección segura de columnas (Case-Insensitive) ---
+    col_names <- names(crit_tab)
+    col_names_up <- toupper(col_names)
+
+    col_form <- col_names[match(toupper(c("FORM", "FORMA", "SOURCE_FORM")), col_names_up)[1]]
+    col_cut  <- col_names[match(toupper(c("TARGET_CUT_RAW_REF", "EST_RAW_CUT", "CUT_SCORE")), col_names_up)[1]]
+    col_eq   <- col_names[match(toupper(c("EQUATED_AT_CUT", "EQUATED", "EQUATED_SCORE")), col_names_up)[1]]
+    col_see  <- col_names[match(toupper(c("SEE_AT_CUT", "SEE", "ERROR")), col_names_up)[1]]
+    col_note <- col_names[match(toupper(c("NOTE", "LABEL", "COMENTARIO")), col_names_up)[1]]
+
+    # Si faltan columnas críticas, abortar con mensaje
+    if (is.na(col_form) || is.na(col_cut) || is.na(col_eq)) {
+      cat("\n[WARN] No se pudieron identificar las columnas necesarias en crit_tab para auditoría de cortes.\n")
+      return()
+    }
+
     print_header("6. PRECISIÓN EN PUNTOS DE CORTE")
-    crit_sorted <- crit_tab[order(crit_tab$FORM, crit_tab$TARGET_CUT_RAW_REF), ]
+    crit_sorted <- crit_tab[order(crit_tab[[col_form]], crit_tab[[col_cut]]), ]
+
     cat(paste0(
       pad_str("FORM", 12), pad_str("CUT", 6, "right"), pad_str("EQ_SCR", 9, "right"),
       pad_str("SEE", 8, "right"), pad_str("CI_95%", 16, "right"), "   NOTE\n"
     ))
     cat(paste0(strrep("-", 90), "\n"))
+
     for (i in 1:nrow(crit_sorted)) {
       r <- crit_sorted[i, ]
-      lower <- r$EQUATED_AT_CUT - (1.96 * r$SEE_AT_CUT)
-      upper <- r$EQUATED_AT_CUT + (1.96 * r$SEE_AT_CUT)
-      ci_str <- sprintf("[%s - %s]", round(lower, 1), round(upper, 1))
+      val_form <- as.character(r[[col_form]])
+      val_cut  <- as.numeric(r[[col_cut]])
+      val_eq   <- as.numeric(r[[col_eq]])
+      val_see  <- if (!is.na(col_see)) as.numeric(r[[col_see]]) else NA_real_
+      val_note <- if (!is.na(col_note)) as.character(r[[col_note]]) else "-"
+
+      lower <- val_eq - (1.96 * (val_see %||% 0))
+      upper <- val_eq + (1.96 * (val_see %||% 0))
+      ci_str <- if (!is.na(val_see)) sprintf("[%s - %s]", round(lower, 1), round(upper, 1)) else "N/A"
+
       cat(paste0(
-        pad_str(r$FORM, 12), fmt_num(r$TARGET_CUT_RAW_REF, 0, 6), fmt_num(r$EQUATED_AT_CUT, 2, 9),
-        fmt_num(r$SEE_AT_CUT, 3, 8), pad_str(ci_str, 16, "right"), "   ", r$NOTE, "\n"
+        pad_str(val_form, 12), fmt_num(val_cut, 0, 6), fmt_num(val_eq, 2, 9),
+        fmt_num(val_see, 3, 8), pad_str(ci_str, 16, "right"), "   ", val_note, "\n"
       ))
     }
   }

@@ -33,10 +33,21 @@ audit_score_impact <- function(final_scores, raw_dat = NULL, eq_results = NULL, 
     return(NULL)
   }
 
+  # --- FIX: Detección segura de columnas en final_scores (Case-Insensitive) ---
+  fs_cols <- names(final_scores)
+  fs_cols_up <- toupper(fs_cols)
+
+  col_fs_id    <- fs_cols[match(toupper(c("ID", "PERSON_ID", "IDENTIFICADOR")), fs_cols_up)[1]]
+  col_fs_form  <- fs_cols[match(toupper(c("FORMA", "FORM", "COLECCIÓN")), fs_cols_up)[1]]
+  col_fs_raw   <- fs_cols[match(toupper(c("Raw_Global_CTT", "RAW_SCORE", "SCORE_RAW", "PUNTAJE_CRUDO")), fs_cols_up)[1]]
+  col_fs_eq    <- fs_cols[match(toupper(c("Eq_Global_CTT", "EQUATED_SCORE", "SCORE_EQ", "PUNTAJE_EQUIPARADO")), fs_cols_up)[1]]
+  col_fs_see   <- fs_cols[match(toupper(c("SEE_Global", "SEE", "ERROR_ESTANDAR", "SEM")), fs_cols_up)[1]]
+  col_fs_level <- fs_cols[match(toupper(c("Nivel", "LEVEL", "PERFORMANCE_LEVEL", "DESEMPEÑO")), fs_cols_up)[1]]
+
   out_dir <- file.path(base_dir)
   if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
-  forma_id <- unique(final_scores$FORMA)[1]
+  forma_id <- if (!is.na(col_fs_form)) unique(final_scores[[col_fs_form]])[1] else "GLOBAL"
   if (is.na(forma_id)) forma_id <- "GLOBAL"
   report_file <- file.path(out_dir, paste0("AUDIT_SCORES_IMPACT_", forma_id, ".txt"))
 
@@ -51,9 +62,9 @@ audit_score_impact <- function(final_scores, raw_dat = NULL, eq_results = NULL, 
   # 1. ESTADÍSTICOS Y EFECTO DEL EQUATING
   # ----------------------------------------------------------------------------
   print_section("1. COMPARATIVA DE MÉTRICA (DELTA)")
-  if ("Raw_Global_CTT" %in% names(final_scores) && "Eq_Global_CTT" %in% names(final_scores)) {
-    raw_m <- mean(final_scores$Raw_Global_CTT, na.rm = TRUE)
-    eq_m <- mean(final_scores$Eq_Global_CTT, na.rm = TRUE)
+  if (!is.na(col_fs_raw) && !is.na(col_fs_eq)) {
+    raw_m <- mean(final_scores[[col_fs_raw]], na.rm = TRUE)
+    eq_m <- mean(final_scores[[col_fs_eq]], na.rm = TRUE)
     delta <- eq_m - raw_m
 
     cat(paste0("Media Puntuación Cruda  : ", sprintf("%.2f", raw_m), "\n"))
@@ -78,33 +89,48 @@ audit_score_impact <- function(final_scores, raw_dat = NULL, eq_results = NULL, 
 
     # --- FIX: Detección segura de columnas (Case-Insensitive) ---
     # Mapeamos candidatos a las columnas reales de audit_critical (priorizando engine v2)
-    label_candidates <- c("TARGET_CUT_RAW_REF", "LABEL", "TARGET_CUT_REF", "NOTE")
-    value_candidates <- c("EQUATED_AT_CUT", "EQUATED", "EST_RAW_CUT", "CUT_SCORE")
+    label_candidates <- toupper(c("TARGET_CUT_RAW_REF", "LABEL", "TARGET_CUT_REF", "NOTE"))
+    value_candidates <- toupper(c("EQUATED_AT_CUT", "EQUATED", "EST_RAW_CUT", "CUT_SCORE"))
+    scale_candidates <- toupper(c("SCALE_ID", "ESCALA", "SCALE"))
+    form_candidates  <- toupper(c("FORM", "FORMA", "SOURCE_FORM"))
 
     col_names <- names(cuts)
     col_names_up <- toupper(col_names)
 
     # Buscar etiqueta por prioridad
-    match_label <- match(label_candidates, col_names_up)
-    match_label <- match_label[!is.na(match_label)]
-    col_label <- if (length(match_label) > 0) col_names[match_label[1]] else NULL
+    col_label <- col_names[match(label_candidates, col_names_up)[1]]
 
     # Buscar valor por prioridad
-    match_value <- match(value_candidates, col_names_up)
-    match_value <- match_value[!is.na(match_value)]
-    col_value <- if (length(match_value) > 0) col_names[match_value[1]] else NULL
+    col_value <- col_names[match(value_candidates, col_names_up)[1]]
 
-    if (!is.null(col_label) && !is.null(col_value)) {
+    # Buscar escala
+    col_scale <- col_names[match(scale_candidates, col_names_up)[1]]
+
+    # Buscar forma en cuts
+    col_form_cuts <- col_names[match(form_candidates, col_names_up)[1]]
+
+    if (!is.null(col_label) && !is.null(col_value) && !is.na(col_label) && !is.na(col_value)) {
       cat(paste0(pad_str("PUNTO DE CORTE", 25), pad_str("SCORE REQ.", 12), pad_str("APROBADOS (N)", 15), "TASA (%)\n"))
       cat(paste0(strrep("-", 70), "\n"))
 
-      scores <- final_scores$Eq_Global_CTT
+      # Filtrar cortes
+      cuts_to_use <- cuts
+      if (!is.na(col_scale)) {
+        cuts_to_use <- cuts_to_use[toupper(as.character(cuts_to_use[[col_scale]])) == "GLOBAL", ]
+      }
+      if (!is.na(col_form_cuts) && forma_id != "GLOBAL") {
+        # Si tenemos forma específica, filtramos por ella
+        cuts_to_use <- cuts_to_use[as.character(cuts_to_use[[col_form_cuts]]) == forma_id, ]
+      }
 
-      # Extraer pares únicos para evitar repeticiones por forma
-      cuts_unique <- unique(cuts[, c(col_label, col_value)])
-      names(cuts_unique) <- c("LBL", "VAL")
+      scores <- if (!is.na(col_fs_eq)) final_scores[[col_fs_eq]] else NULL
 
-      for (i in 1:nrow(cuts_unique)) {
+      if (!is.null(scores)) {
+        # Extraer pares únicos para evitar repeticiones por forma
+        cuts_unique <- unique(cuts_to_use[, c(col_label, col_value)])
+        names(cuts_unique) <- c("LBL", "VAL")
+
+        for (i in 1:nrow(cuts_unique)) {
         cut_label <- as.character(cuts_unique$LBL[i])
         cut_val <- as.numeric(cuts_unique$VAL[i])
 
@@ -130,8 +156,8 @@ audit_score_impact <- function(final_scores, raw_dat = NULL, eq_results = NULL, 
   # 3. DISTRIBUCIÓN DE NIVELES
   # ----------------------------------------------------------------------------
   print_section("3. DISTRIBUCIÓN DE NIVELES DE DESEMPEÑO")
-  if ("Nivel" %in% names(final_scores)) {
-    lvl_counts <- table(final_scores$Nivel)
+  if (!is.na(col_fs_level)) {
+    lvl_counts <- table(final_scores[[col_fs_level]])
     lvl_props <- prop.table(lvl_counts) * 100
 
     for (lvl in names(lvl_counts)) {
@@ -147,9 +173,9 @@ audit_score_impact <- function(final_scores, raw_dat = NULL, eq_results = NULL, 
   # ----------------------------------------------------------------------------
   print_section("4. PRECISIÓN ESTIMADA DE LAS PUNTUACIONES (SEE)")
 
-  if ("SEE_Global" %in% names(final_scores)) {
-    avg_see <- mean(final_scores$SEE_Global, na.rm = TRUE)
-    sd_score <- sd(final_scores$Eq_Global_CTT, na.rm = TRUE)
+  if (!is.na(col_fs_see) && !is.na(col_fs_eq)) {
+    avg_see <- mean(final_scores[[col_fs_see]], na.rm = TRUE)
+    sd_score <- sd(final_scores[[col_fs_eq]], na.rm = TRUE)
 
     # Ratio Ruido/Señal: Qué tanto del SD observado es error
     ratio <- if (sd_score > 0) avg_see / sd_score else NA
@@ -189,17 +215,27 @@ audit_score_impact <- function(final_scores, raw_dat = NULL, eq_results = NULL, 
 
     # Unir datos demográficos (raw_dat) con puntuaciones (final_scores) usando ID
     # Aseguramos que ID sea del mismo tipo
-    final_scores$ID <- as.character(final_scores$ID)
+    if (!is.na(col_fs_id)) {
+      final_scores[[col_fs_id]] <- as.character(final_scores[[col_fs_id]])
 
-    if (!is.na(col_id_raw)) {
-      raw_dat[[col_id_raw]] <- as.character(raw_dat[[col_id_raw]])
+      if (!is.na(col_id_raw)) {
+        raw_dat[[col_id_raw]] <- as.character(raw_dat[[col_id_raw]])
 
-      # Columnas a seleccionar (las que existan)
-      cols_demog_to_select <- c(col_id_raw, col_sexo, col_region)
-      cols_demog_to_select <- cols_demog_to_select[!is.na(cols_demog_to_select)]
+        # Columnas a seleccionar (las que existan)
+        cols_demog_to_select <- c(col_id_raw, col_sexo, col_region)
+        cols_demog_to_select <- cols_demog_to_select[!is.na(cols_demog_to_select)]
 
-      merged_scores <- final_scores |>
-        dplyr::left_join(raw_dat |> dplyr::select(dplyr::all_of(cols_demog_to_select)), by = setNames(col_id_raw, "ID"))
+        merged_scores <- final_scores |>
+          dplyr::left_join(raw_dat |> dplyr::select(dplyr::all_of(cols_demog_to_select)), by = setNames(col_id_raw, col_fs_id))
+      } else {
+        merged_scores <- final_scores
+        # Intentar usar warn si está disponible (según memoria está en R/00_common_base.R)
+        if (exists("warn")) {
+          warn("No se encontró columna ID en raw_dat para cruce demográfico.", "Audit_Score")
+        } else {
+          cat(">> ADVERTENCIA: No se encontró columna ID en raw_dat para cruce demográfico.\n")
+        }
+      }
     } else {
       merged_scores <- final_scores
       # Intentar usar warn si está disponible (según memoria está en R/00_common_base.R)
@@ -223,14 +259,14 @@ audit_score_impact <- function(final_scores, raw_dat = NULL, eq_results = NULL, 
         dplyr::group_by(dplyr::across(dplyr::all_of(group_var))) |>
         dplyr::summarise(
           N = dplyr::n(),
-          Mean_Eq = mean(Eq_Global_CTT, na.rm = TRUE),
-          SD_Eq = sd(Eq_Global_CTT, na.rm = TRUE),
+          Mean_Eq = mean(.data[[col_fs_eq]], na.rm = TRUE),
+          SD_Eq = sd(.data[[col_fs_eq]], na.rm = TRUE),
           # Tasa de aprobación
-          Pass_Rate = mean(Nivel != "Insuficiente", na.rm = TRUE) * 100
+          Pass_Rate = if (!is.na(col_fs_level)) mean(.data[[col_fs_level]] != "Insuficiente", na.rm = TRUE) * 100 else NA_real_
         ) |>
         dplyr::mutate(
           # Diferencia estandarizada
-          Std_Diff = (Mean_Eq - mean(data$Eq_Global_CTT, na.rm = TRUE)) / sd(data$Eq_Global_CTT, na.rm = TRUE)
+          Std_Diff = (Mean_Eq - mean(data[[col_fs_eq]], na.rm = TRUE)) / sd(data[[col_fs_eq]], na.rm = TRUE)
         )
 
       cat(paste0(
