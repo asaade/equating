@@ -180,7 +180,7 @@ ingest_raw_dat <- function(path, config) {
       )
     },
     error = function(e) {
-      fatal(paste("Error crítico en lectura FWF:", e$message))
+      fatal(paste("Error crítico en lectura FWF:", sanitize_error_msg(e)))
       stop(e)
     }
   )

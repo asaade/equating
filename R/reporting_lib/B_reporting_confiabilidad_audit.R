@@ -95,17 +95,15 @@ audit_internal_structure <- function(ctt_results, base_dir, config) {
         ci_str = paste0("+/- ", sprintf("%.1f", 1.96 * sem_val), " pts")
       )
 
-    for (i in 1:nrow(rel_df)) {
-      row <- rel_df[i, ]
-      cat(paste0(
-        pad_str(row$FORMA, 10),
-        pad_str(row$N_ITEMS, 8),
-        pad_str(sprintf("%.3f", row$ALPHA), 8),
-        pad_str(sprintf("%.2f", row$sem_val), 8),
-        pad_str(row$ci_str, 15),
-        row$quality, "\n"
-      ))
-    }
+    cat(paste0(
+      vapply(rel_df$FORMA, pad_str, width = 10, FUN.VALUE = character(1), USE.NAMES = FALSE),
+      vapply(rel_df$N_ITEMS, pad_str, width = 8, FUN.VALUE = character(1), USE.NAMES = FALSE),
+      vapply(ifelse(is.na(rel_df$ALPHA), NA_character_, sprintf("%.3f", rel_df$ALPHA)), pad_str, width = 8, FUN.VALUE = character(1), USE.NAMES = FALSE),
+      vapply(ifelse(is.na(rel_df$sem_val), NA_character_, sprintf("%.2f", rel_df$sem_val)), pad_str, width = 8, FUN.VALUE = character(1), USE.NAMES = FALSE),
+      vapply(rel_df$ci_str, pad_str, width = 15, FUN.VALUE = character(1), USE.NAMES = FALSE),
+      rel_df$quality, "\n",
+      collapse = ""
+    ))
 
     # Nota explicativa para audiencia no técnica
     avg_sem <- mean(rel_df$SEM, na.rm = TRUE)
@@ -156,16 +154,14 @@ audit_internal_structure <- function(ctt_results, base_dir, config) {
         var_str = ifelse(!is.na(VAR_EXP_1), sprintf("%.1f%%", VAR_EXP_1 * 100), "N/A")
       )
 
-    for (i in 1:nrow(dim_df)) {
-      row <- dim_df[i, ]
-      cat(paste0(
-        pad_str(row$FORMA, 10),
-        pad_str(sprintf("%.2f", row$RATIO_1_2), 12),
-        pad_str(row$var_str, 12),
-        pad_str(row$status_flag, 15),
-        row$diag_txt, "\n"
-      ))
-    }
+    cat(paste0(
+      vapply(dim_df$FORMA, pad_str, width = 10, FUN.VALUE = character(1), USE.NAMES = FALSE),
+      vapply(ifelse(is.na(dim_df$RATIO_1_2), NA_character_, sprintf("%.2f", dim_df$RATIO_1_2)), pad_str, width = 12, FUN.VALUE = character(1), USE.NAMES = FALSE),
+      vapply(dim_df$var_str, pad_str, width = 12, FUN.VALUE = character(1), USE.NAMES = FALSE),
+      vapply(dim_df$status_flag, pad_str, width = 15, FUN.VALUE = character(1), USE.NAMES = FALSE),
+      dim_df$diag_txt, "\n",
+      collapse = ""
+    ))
 
     cat("\nInterpretación:\n")
     cat("- Ratio 1:2 bajo (< 3.0) sugiere que un segundo factor (ej. velocidad, lectura) está contaminando la medida.\n")

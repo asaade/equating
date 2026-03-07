@@ -240,18 +240,21 @@ check_dimensionality <- function(item_mat, threshold_ratio = 3, threshold_var = 
 
   # 2. Análisis Bi-factor y cálculo de Omega Jerárquico/ECV
   # Se extraen factores de grupo para determinar la estructura bi-factor
-  n_factors <- 3 # max(kaiser_factors, 3)
+  # Ajustar dinámicamente el número de factores para no fallar con pocos ítems
+  n_factors <- max(1, min(3, floor(k / 3)))
   om_res <- tryCatch(
     {
-      psych::omega(item_mat, nfactors = n_factors, poly = TRUE, plot = FALSE)
+      # Usar cor_mat en lugar de item_mat ahorra tiempo (evita re-calcular tetrachoric)
+      psych::omega(cor_mat, nfactors = n_factors, plot = FALSE)
     },
     error = function(e) {
       return(NULL)
     }
   )
 
-  omega_h <- if (!is.null(om_res)) om_res$omega_h else NA
-  ecv <- if (!is.null(om_res)) om_res$ECV else NA
+  # Extraer como numérico sin nombres para evitar problemas de compatibilidad en data.frames posteriores
+  omega_h <- if (!is.null(om_res)) as.numeric(om_res$omega_h) else NA_real_
+  ecv <- if (!is.null(om_res)) as.numeric(om_res$ECV[1]) else NA_real_
 
   # 3. Cálculo del Porcentaje de Correlaciones no Contaminadas (PUC)
   puc <- NA
@@ -287,6 +290,14 @@ check_dimensionality <- function(item_mat, threshold_ratio = 3, threshold_var = 
     }
   }
 
+  # 6. Cálculo de índice unidimensional adicional (u)
+  u_val <- NA_real_
+  try({
+    # Usar cor_mat pre-calculada
+    ud <- as.list(psych::unidim(cor_mat)$uni)$u
+    u_val <- as.numeric(ud)
+  }, silent = TRUE)
+
   list(
     status = if (is_unidim) "ESSENTIAL_UNIDIM_OK" else "MULTIDIMENSIONAL_DETECTED",
     suggested_factors = kaiser_factors,
@@ -294,7 +305,7 @@ check_dimensionality <- function(item_mat, threshold_ratio = 3, threshold_var = 
     omega_hierarchical = round(omega_h, 3),
     explained_common_variance = round(ecv, 3),
     eigen_ratio = round(ratio, 2),
-    U = as.list(psych::unidim(item_mat, cor = "tet")$uni)$u
+    U = round(u_val, 3)
   )
 }
 
@@ -322,7 +333,7 @@ analyze_distractor_efficiency <- function(raw_df, scored_df, items) {
   total_score <- rowSums(score_mat, na.rm = TRUE)
 
   # Grupos de desempeño (Terciles)
-  breaks <- quantile(total_score, probs = c(0, 0.33, 0.66, 1), na.rm = TRUE)
+  breaks <- quantile(total_score, probs = c(0, 0.25, 0.50, 0.75, 1), na.rm = TRUE)
 
   n_unique <- if (requireNamespace("data.table", quietly = TRUE)) {
     data.table::uniqueN(breaks)
@@ -330,12 +341,7 @@ analyze_distractor_efficiency <- function(raw_df, scored_df, items) {
     length(unique(breaks))
   }
 
-  if (n_unique < 4) {
-    groups <- cut(total_score, 3, labels = c("Low", "Mid", "High"))
-  } else {
-    groups <- cut(total_score, breaks = breaks, labels = c("Low", "Mid", "High"), include.lowest = TRUE)
-  }
-
+  groups <- cut(total_score, breaks = breaks, labels = c("Low", "MidLow", "MidHigh", "High"), include.lowest = TRUE)
   results_list <- list()
 
   for (itm in valid_items) {
@@ -384,7 +390,8 @@ analyze_distractor_efficiency <- function(raw_df, scored_df, items) {
       OPTION    = opts,
       PROP      = as.numeric(prop_total),
       PROP_LOW  = if ("Low" %in% colnames(props)) as.numeric(props[, "Low"]) else NA_real_,
-      PROP_MID  = if ("Mid" %in% colnames(props)) as.numeric(props[, "Mid"]) else NA_real_,
+      PROP_MIDLOW  = if ("MidLow" %in% colnames(props)) as.numeric(props[, "MidLow"]) else NA_real_,
+      PROP_MIDHIGH  = if ("MidHigh" %in% colnames(props)) as.numeric(props[, "MidHigh"]) else NA_real_,
       PROP_HIGH = if ("High" %in% colnames(props)) as.numeric(props[, "High"]) else NA_real_,
       R_BIS_OPT = round(rbis_vec, 3)
     )
@@ -448,7 +455,7 @@ perform_statistical_analysis_by_form <- function(calib_clean, all_items, config)
       Kaiser = dim$suggested_factors,
       Omega = dim$omega_hierarchical,
       PUC = dim$puc,
-      U = as.list(psych::unidim(mat, cor = "tet")$uni)$u
+      U = dim$U
     )
   }
 

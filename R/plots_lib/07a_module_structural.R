@@ -138,17 +138,18 @@ plot_forensic_item_trace <- function(ctt_results, item_id, flag_reason = "") {
   r_bis <- tryCatch(ctt_results$stats$P_BIS[ctt_results$stats$ITEM == item_id], error = function(e) NA)
 
   # Transformación a formato largo para ggplot
-  cols_req <- c("PROP_LOW", "PROP_MID", "PROP_HIGH")
+  cols_req <- c("PROP_LOW", "PROP_MIDLOW", "PROP_MIDHIGH", "PROP_HIGH")
   plot_df <- dist_data |>
     dplyr::select(OPTION, KEY, all_of(cols_req)) |>
     tidyr::pivot_longer(cols = all_of(cols_req), names_to = "Group", values_to = "Prop") |>
     dplyr::mutate(
       Group_Num = dplyr::case_when(
-        grepl("LOW", Group) ~ 1,
-        grepl("MID", Group) ~ 2,
-        grepl("HIGH", Group) ~ 3
+        Group == "PROP_LOW" ~ 1,
+        Group == "PROP_MIDLOW" ~ 2,
+        Group == "PROP_MIDHIGH" ~ 3,
+        Group == "PROP_HIGH" ~ 4
       ),
-      Is_Key = (OPTION == KEY),
+      Is_Key = (toupper(trimws(OPTION)) == toupper(trimws(KEY))),
       Line_Type = ifelse(Is_Key, "Clave", "Distractor"),
       Line_Color = ifelse(Is_Key, "black", "gray60"),
       Line_Width = ifelse(Is_Key, 1.2, 0.6)
@@ -163,7 +164,7 @@ plot_forensic_item_trace <- function(ctt_results, item_id, flag_reason = "") {
 
     # Etiquetas de opciones al final de la línea
     geom_text(
-      data = plot_df |> dplyr::filter(Group_Num == 3),
+      data = plot_df |> dplyr::filter(Group_Num == 4),
       aes(label = OPTION, color = Line_Type),
       hjust = -0.5, fontface = "bold", size = 3
     ) +
@@ -171,7 +172,7 @@ plot_forensic_item_trace <- function(ctt_results, item_id, flag_reason = "") {
     scale_fill_manual(values = c("Clave" = "black", "Distractor" = "gray60")) +
     scale_linewidth_manual(values = c("Clave" = 1.0, "Distractor" = 0.5)) +
     scale_linetype_manual(values = c("Clave" = "solid", "Distractor" = "longdash")) +
-    scale_x_continuous(breaks = 1:3, labels = c("Bajo", "Medio", "Alto"), limits = c(0.8, 3.3)) +
+    scale_x_continuous(breaks = 1:4, labels = c("Bajo", "Medio Bajo", "Medio Alto", "Alto"), limits = c(0.8, 3.3)) +
     scale_y_continuous(limits = c(0, 1), labels = scales::percent) +
     labs(
       subtitle = sprintf("Ítem: %s | Clave: %s | p=%.2f | r=%.2f", item_id, key_val, p_val, r_bis),

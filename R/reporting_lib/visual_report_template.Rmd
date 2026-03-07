@@ -178,7 +178,7 @@ kpi_matrix <- data.frame(
 
 kpi_matrix |>
   kbl(booktabs = T, align = "llccl") |>
-  kable_styling(latex_options = c("striped", "hold_position"), full_width = T) |>
+  kable_styling(latex_options = c("striped", "hold_position"), full_width = TRUE) |>
   row_spec(0, bold = T, background = "#333333", color = "white") |>
   column_spec(1, bold = T, width = "3cm") |>
   column_spec(5, bold = T, color = ifelse(kpi_matrix$Estado == "CUMPLE" | kpi_matrix$Estado == "OPTIMO", "black", "red"))
@@ -210,13 +210,13 @@ Se verifica que los insumos básicos (los ítems) funcionen adecuadamente antes 
 item_stats_audit <- ctt_results$stats |>
   summarise(
     N_Items = n(),
-    Promedio_P = mean(P_VAL, na.rm = T),
-    Promedio_Rbis = mean(P_BIS, na.rm = T),
-    Items_Rbis_Bajo = sum(P_BIS < 0.15, na.rm = T)
+    Promedio_P = mean(P_VAL, na.rm = TRUE),
+    Promedio_Rbis = mean(P_BIS, na.rm = TRUE),
+    Items_Rbis_Bajo = sum(P_BIS < 0.15, na.rm = TRUE)
   )
 
 item_stats_audit |>
-  kbl(caption = "Auditoría de Estadísticos Clásicos", digits = 3, booktabs = T) |>
+  kbl(caption = "Auditoría de Estadísticos Clásicos", digits = 3, booktabs = TRUE) |>
   kable_styling(latex_options = "hold_position") |>
   add_footnote(c("Nota: Items con R-Bis < 0.15 aportan poco a la diferenciación."), notation = "none")
 ```
@@ -240,7 +240,7 @@ if (n_dropped > 0) {
   cat("**Reporte de Ítems Eliminados del Enlace (Drift):**")
   items_dropped |>
     select(ITEM, STATUS, Z_SCORE, P_SRC, P_DEST) |>
-    kbl(booktabs = T) |>
+    kbl(booktabs = TRUE) |>
     kable_styling(latex_options = "hold_position")
 } else {
   cat("\n**Resultado:** El conjunto de ítems ancla se mantuvo intacto. No hubo eliminaciones por deriva (Drift), lo que garantiza la máxima conectividad entre escalas.")
@@ -286,9 +286,9 @@ audit_cuts <- eq_results$audit_critical |>
   )
 
 audit_cuts |>
-  kbl(caption = "Precisión Condicional en Puntos de Corte", digits = 2, booktabs = T) |>
+  kbl(caption = "Precisión Condicional en Puntos de Corte", digits = 2, booktabs = TRUE) |>
   kable_styling(latex_options = c("striped", "hold_position")) |>
-  row_spec(0, bold = T)
+  row_spec(0, bold = TRUE)
 ```
 
 **Interpretación:** El SEE en el corte representa el margen de error institucional. Valores bajos indican alta certeza en la clasificación de candidatos limítrofes.
