@@ -88,11 +88,16 @@ assign_performance_levels <- function(scores, config) {
   # Parseo seguro a Dataframe
   levels_df <- tryCatch(
     {
-      df <- do.call(rbind, lapply(levels_cfg, as.data.frame))
-      # Asegurar tipos y existencia de columnas
-      if (!"min_score" %in% names(df)) stop("Falta 'min_score' en performance_levels.")
-      if (!"label" %in% names(df)) stop("Falta 'label' en performance_levels.")
+      # Filtrar solo elementos válidos (deben tener min_score y label)
+      valid_levels <- Filter(function(x) {
+        !is.null(x$min_score) && !is.null(x$label)
+      }, levels_cfg)
 
+      if (length(valid_levels) == 0) stop("No se encontraron niveles válidos (min_score + label).")
+
+      df <- do.call(rbind, lapply(valid_levels, as.data.frame))
+
+      # Asegurar tipos y existencia de columnas
       df$min_score <- suppressWarnings(as.numeric(df$min_score))
       df$label <- as.character(df$label)
 
