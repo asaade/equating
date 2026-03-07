@@ -37,12 +37,12 @@ audit_score_impact <- function(final_scores, raw_dat = NULL, eq_results = NULL, 
   fs_cols <- names(final_scores)
   fs_cols_up <- toupper(fs_cols)
 
-  col_fs_id    <- fs_cols[match(toupper(c("ID", "PERSON_ID", "IDENTIFICADOR")), fs_cols_up)[1]]
-  col_fs_form  <- fs_cols[match(toupper(c("FORMA", "FORM", "COLECCIÓN")), fs_cols_up)[1]]
-  col_fs_raw   <- fs_cols[match(toupper(c("Raw_Global_CTT", "RAW_SCORE", "SCORE_RAW", "PUNTAJE_CRUDO")), fs_cols_up)[1]]
-  col_fs_eq    <- fs_cols[match(toupper(c("Eq_Global_CTT", "EQUATED_SCORE", "SCORE_EQ", "PUNTAJE_EQUIPARADO")), fs_cols_up)[1]]
-  col_fs_see   <- fs_cols[match(toupper(c("SEE_Global", "SEE", "ERROR_ESTANDAR", "SEM")), fs_cols_up)[1]]
-  col_fs_level <- fs_cols[match(toupper(c("Nivel", "LEVEL", "PERFORMANCE_LEVEL", "DESEMPEÑO")), fs_cols_up)[1]]
+  col_fs_id    <- fs_cols[na.omit(match(toupper(c("ID", "PERSON_ID", "IDENTIFICADOR")), fs_cols_up))[1]]
+  col_fs_form  <- fs_cols[na.omit(match(toupper(c("FORMA", "FORM", "COLECCIÓN")), fs_cols_up))[1]]
+  col_fs_raw   <- fs_cols[na.omit(match(toupper(c("Raw_Global_CTT", "RAW_SCORE", "SCORE_RAW", "PUNTAJE_CRUDO")), fs_cols_up))[1]]
+  col_fs_eq    <- fs_cols[na.omit(match(toupper(c("Eq_Global_CTT", "EQUATED_SCORE", "SCORE_EQ", "PUNTAJE_EQUIPARADO")), fs_cols_up))[1]]
+  col_fs_see   <- fs_cols[na.omit(match(toupper(c("SEE_Global", "SEE", "ERROR_ESTANDAR", "SEM")), fs_cols_up))[1]]
+  col_fs_level <- fs_cols[na.omit(match(toupper(c("Nivel", "LEVEL", "PERFORMANCE_LEVEL", "DESEMPEÑO")), fs_cols_up))[1]]
 
   out_dir <- file.path(base_dir)
   if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
@@ -71,9 +71,9 @@ audit_score_impact <- function(final_scores, raw_dat = NULL, eq_results = NULL, 
     cat(paste0("Media Puntuación Escala : ", sprintf("%.2f", eq_m), "\n"))
     cat(paste0("Efecto Neto Equating    : ", sprintf("%+.2f", delta), " puntos\n"))
 
-    if (delta > 0) {
+    if (!is.na(delta) && delta > 0) {
       cat(">> Interpretación: La forma fue más DIFÍCIL que la base (Bonificación).\n")
-    } else {
+    } else if (!is.na(delta) && delta <= 0) {
       cat(">> Interpretación: La forma fue más FÁCIL que la base (Ajuste negativo).\n")
     }
   }
@@ -98,16 +98,16 @@ audit_score_impact <- function(final_scores, raw_dat = NULL, eq_results = NULL, 
     col_names_up <- toupper(col_names)
 
     # Buscar etiqueta por prioridad
-    col_label <- col_names[match(label_candidates, col_names_up)[1]]
+    col_label <- col_names[na.omit(match(label_candidates, col_names_up))[1]]
 
     # Buscar valor por prioridad
-    col_value <- col_names[match(value_candidates, col_names_up)[1]]
+    col_value <- col_names[na.omit(match(value_candidates, col_names_up))[1]]
 
     # Buscar escala
-    col_scale <- col_names[match(scale_candidates, col_names_up)[1]]
+    col_scale <- col_names[na.omit(match(scale_candidates, col_names_up))[1]]
 
     # Buscar forma en cuts
-    col_form_cuts <- col_names[match(form_candidates, col_names_up)[1]]
+    col_form_cuts <- col_names[na.omit(match(form_candidates, col_names_up))[1]]
 
     if (!is.null(col_label) && !is.null(col_value) && !is.na(col_label) && !is.na(col_value)) {
       cat(paste0(pad_str("PUNTO DE CORTE", 25), pad_str("SCORE REQ.", 12), pad_str("APROBADOS (N)", 15), "TASA (%)\n"))
@@ -179,7 +179,7 @@ audit_score_impact <- function(final_scores, raw_dat = NULL, eq_results = NULL, 
     sd_score <- sd(final_scores[[col_fs_eq]], na.rm = TRUE)
 
     # Ratio Ruido/Señal: Qué tanto del SD observado es error
-    ratio <- if (sd_score > 0) avg_see / sd_score else NA
+    ratio <- if (!is.na(sd_score) && sd_score > 0) avg_see / sd_score else NA
 
     cat(paste0("Error Estándar Promedio (SEE) : ", sprintf("%.3f", avg_see), "\n"))
     cat(paste0("Desviación Estándar (SD)      : ", sprintf("%.3f", sd_score), "\n"))
@@ -296,7 +296,7 @@ audit_score_impact <- function(final_scores, raw_dat = NULL, eq_results = NULL, 
 
       max_pass <- max(stats$Pass_Rate, na.rm = TRUE)
       min_pass <- min(stats$Pass_Rate, na.rm = TRUE)
-      if ((max_pass - min_pass) > 10) {
+      if (!is.na(max_pass) && !is.na(min_pass) && is.finite(max_pass) && is.finite(min_pass) && (max_pass - min_pass) > 10) {
         cat(paste0(
           ">> ALERTA: Brecha de aprobación > 10% detectada en ", group_var,
           " (Posible Impacto Adverso).\n"
