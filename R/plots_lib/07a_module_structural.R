@@ -144,19 +144,16 @@ plot_forensic_item_trace <- function(ctt_results, item_id, flag_reason = "") {
     tidyr::pivot_longer(cols = all_of(cols_req), names_to = "Group", values_to = "Prop") |>
     dplyr::mutate(
       Group_Num = dplyr::case_when(
-                           grepl("LOW", Group) ~ 1,
-                           grepl("MIDLOW", Group) ~ 2,
-                           grepl("MIDHIGH", Group) ~ 3,
-                           grepl("HIGH", Group) ~ 4
+        Group == "PROP_LOW" ~ 1,
+        Group == "PROP_MIDLOW" ~ 2,
+        Group == "PROP_MIDHIGH" ~ 3,
+        Group == "PROP_HIGH" ~ 4
       ),
-      Is_Key = (OPTION == KEY),
+      Is_Key = (toupper(trimws(OPTION)) == toupper(trimws(KEY))),
       Line_Type = ifelse(Is_Key, "Clave", "Distractor"),
       Line_Color = ifelse(Is_Key, "black", "gray60"),
       Line_Width = ifelse(Is_Key, 1.2, 0.6)
     )
-
-  ##:ess-bp-start::browser@nil:##
-browser(expr=is.null(.ESSBP.[["@2@"]]));##:ess-bp-end:##
 
   # Gráfico
   ggplot(plot_df, aes(x = Group_Num, y = Prop, group = OPTION)) +
