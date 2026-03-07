@@ -8,11 +8,10 @@
 if (!require("pacman")) install.packages("pacman")
 pacman::p_load(ggplot2, dplyr, tidyr, cowplot, ggrepel, scales, psych)
 
-# Cargar utilidades comunes si no están cargadas
 if (!exists("execute_safely")) source("00_common.R")
 
 # ==============================================================================
-# 1. TEMA GRÁFICO AUDITABLE (Monocromático Estricto)
+# 1. TEMA GRÁFICO (Monocromático)
 # ==============================================================================
 theme_audit_structural <- function() {
   theme_bw(base_size = 11) +
@@ -71,11 +70,7 @@ plot_scree_evidence <- function(ctt_results) {
     # Criterio de Kaiser (Eigenvalue > 1)
     geom_hline(yintercept = 1, linetype = "dashed", color = "gray60") +
     annotate("text", x = 10, y = 1.1, label = "Kaiser (Ev > 1)", hjust = 1, vjust = 0, size = 2.5, fontface = "italic") +
-
-    # Faceting por Forma
     facet_wrap(~FORMA, scales = "free_y") +
-
-    # Anotaciones de Ratio (Esencial para defensa)
     geom_text(
       data = .get_unique_dim_labels(plot_data),
       aes(x = Inf, y = Inf, label = Label),
@@ -124,24 +119,25 @@ plot_scree_evidence <- function(ctt_results) {
 # ==============================================================================
 
 plot_forensic_item_trace <- function(ctt_results, item_id, flag_reason = "") {
-  # Extraer datos específicos del ítem
+  # 1. Extracción y limpieza
+  invalid_options <- c(" ", ".", "*")
   dist_data <- ctt_results$distractors |>
-    dplyr::filter(ITEM == item_id)
+    dplyr::filter(ITEM == item_id) |>
+    dplyr::filter(!OPTION %in% invalid_options)
 
   if (nrow(dist_data) == 0) {
     return(NULL)
   }
 
-  # Metadata del ítem
   key_val <- unique(dist_data$KEY)
   p_val <- tryCatch(ctt_results$stats$P_VAL[ctt_results$stats$ITEM == item_id], error = function(e) NA)
   r_bis <- tryCatch(ctt_results$stats$P_BIS[ctt_results$stats$ITEM == item_id], error = function(e) NA)
 
-  # Transformación a formato largo para ggplot
+  # 2. Preparación de datos (Tidy format)
   cols_req <- c("PROP_LOW", "PROP_MIDLOW", "PROP_MIDHIGH", "PROP_HIGH")
   plot_df <- dist_data |>
-    dplyr::select(OPTION, KEY, all_of(cols_req)) |>
-    tidyr::pivot_longer(cols = all_of(cols_req), names_to = "Group", values_to = "Prop") |>
+    dplyr::select(OPTION, KEY, dplyr::all_of(cols_req)) |>
+    tidyr::pivot_longer(cols = dplyr::all_of(cols_req), names_to = "Group", values_to = "Prop") |>
     dplyr::mutate(
       Group_Num = dplyr::case_when(
         Group == "PROP_LOW" ~ 1,
@@ -150,38 +146,55 @@ plot_forensic_item_trace <- function(ctt_results, item_id, flag_reason = "") {
         Group == "PROP_HIGH" ~ 4
       ),
       Is_Key = (toupper(trimws(OPTION)) == toupper(trimws(KEY))),
-      Line_Type = ifelse(Is_Key, "Clave", "Distractor"),
-      Line_Color = ifelse(Is_Key, "black", "gray60"),
-      Line_Width = ifelse(Is_Key, 1.2, 0.6)
+      Line_Type = ifelse(Is_Key, "Clave", "Distractor")
     )
 
-  # Gráfico
-  ggplot(plot_df, aes(x = Group_Num, y = Prop, group = OPTION)) +
-    # Zona de azar (asumiendo 4 opciones = 0.25, 5 = 0.20)
-    geom_hline(yintercept = 1 / nrow(dist_data), linetype = "dotted", color = "gray80") +
+  # 3. Construcción de la gráfica
+  g <- ggplot(plot_df, aes(x = Group_Num, y = Prop, group = OPTION)) +
+    # Línea de azar teórica
+    geom_hline(yintercept = 1 / nrow(dist_data), linetype = "dotted", color = "gray70") +
+    # Trazos de las opciones
     geom_line(aes(color = Line_Type, linewidth = Line_Type, linetype = Line_Type)) +
-    geom_point(aes(fill = Line_Type), shape = 21, size = 2, color = "white", stroke = 0.5) +
-
-    # Etiquetas de opciones al final de la línea
+    geom_point(aes(fill = Line_Type), shape = 21, size = 2.5, color = "white", stroke = 0.5) +
+    # Etiquetas de opciones (se muestran en el Group_Num == 4)
     geom_text(
-      data = plot_df |> dplyr::filter(Group_Num == 4),
+      data = dplyr::filter(plot_df, Group_Num == 4),
       aes(label = OPTION, color = Line_Type),
-      hjust = -0.5, fontface = "bold", size = 3
+      hjust = -0.5, fontface = "bold", size = 3.5
     ) +
-    scale_color_manual(values = c("Clave" = "black", "Distractor" = "gray60")) +
-    scale_fill_manual(values = c("Clave" = "black", "Distractor" = "gray60")) +
-    scale_linewidth_manual(values = c("Clave" = 1.0, "Distractor" = 0.5)) +
+    # Escalas manuales
+    scale_color_manual(values = c("Clave" = "#000000", "Distractor" = "#808080")) +
+    scale_fill_manual(values = c("Clave" = "#000000", "Distractor" = "#808080")) +
+    scale_linewidth_manual(values = c("Clave" = 1.2, "Distractor" = 0.6)) +
     scale_linetype_manual(values = c("Clave" = "solid", "Distractor" = "longdash")) +
-    scale_x_continuous(breaks = 1:4, labels = c("Bajo", "Medio Bajo", "Medio Alto", "Alto"), limits = c(0.8, 3.3)) +
-    scale_y_continuous(limits = c(0, 1), labels = scales::percent) +
-    labs(
-      subtitle = sprintf("Ítem: %s | Clave: %s | p=%.2f | r=%.2f", item_id, key_val, p_val, r_bis),
-      caption = if (flag_reason != "") paste("ALERTA:", flag_reason) else NULL,
-      x = "Nivel de Habilidad (Quintiles)",
-      y = "Probabilidad de Selección"
+    # Corrección de límites y etiquetas del eje X
+    scale_x_continuous(
+      breaks = 1:4,
+      labels = c("Bajo", "M. Bajo", "M. Alto", "Alto"),
+      limits = c(0.8, 4.5), # Aumentado para incluir el grupo 4 y etiquetas
+      expand = expansion(mult = c(0.05, 0.1))
     ) +
-    theme_audit_structural() +
-    theme(legend.position = "top", legend.justification = "left")
+    scale_y_continuous(
+      limits = c(0, 1),
+      labels = scales::percent_format(accuracy = 1),
+      breaks = seq(0, 1, 0.2)
+    ) +
+    labs(
+      title = paste("Análisis de Distractores - Ítem:", item_id),
+      subtitle = sprintf("Clave: %s | p=%.2f | r_bis=%.2f", key_val, p_val, r_bis),
+      caption = if (flag_reason != "") paste("ALERTA:", flag_reason) else NULL,
+      x = "Nivel de Habilidad (Grupos)",
+      y = "Probabilidad de Selección"
+    )
+
+  # Aplicación de tema con fallback
+  if (exists("theme_audit_structural")) {
+    g <- g + theme_audit_structural()
+  } else {
+    g <- g + theme_minimal()
+  }
+
+  g + theme(legend.position = "none") # Las etiquetas de texto reemplazan la leyenda
 }
 
 # ==============================================================================
@@ -194,15 +207,8 @@ plot_calculated_scree <- function(calib_df) {
   }
 
   # Detectar columnas de ítems (asumiendo que las columnas de metadatos son fijas o pocas)
-  # Excluir columnas ID, FORMA y otras metadatas conocidas
+  # Excluir columnas ID, FORMA y otras metadatas conocidas (TODO: Identificar otras variables)
   meta_cols <- c("ID", "FORMA", "SEXO", "REGION", "Score_Final", "Nivel")
-  # También excluir cualquier columna que no sea numérica/entera
-
-  # Filtrar solo columnas numéricas que parecen ítems (0/1)
-  # Asumimos que los items están en columnas numéricas y el resto es metadata
-  # Estrategia: Seleccionar columnas numéricas y quitar metadata conocida
-
-  # Separar por formas para análisis independiente
   forms <- unique(calib_df$FORMA)
   plot_data_list <- list()
 
@@ -210,17 +216,14 @@ plot_calculated_scree <- function(calib_df) {
     form_data <- calib_df |> dplyr::filter(FORMA == frm)
 
     # Identificar items: columnas numéricas que no son ID/FORMA
-    # Una heurística segura: columnas con valores 0/1 mayoritariamente
     item_cols <- form_data |>
       dplyr::select(where(is.numeric)) |>
       names()
 
-    # Limpieza adicional de columnas no ítem
     item_cols <- setdiff(item_cols, meta_cols)
 
     if (length(item_cols) < 3) next # Necesitamos al menos 3 items
 
-    # Matriz de items
     mat_items <- form_data |>
       dplyr::select(all_of(item_cols)) |>
       as.matrix()
