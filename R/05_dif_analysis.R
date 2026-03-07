@@ -10,19 +10,14 @@ pacman::p_load(dplyr, readr, tidyr)
 # LÓGICA DE CÁLCULO
 # ==============================================================================
 
-#' Ejecuta análisis DIF (Mantel-Haenszel) con opción de Purificación
-#' @param purify Booleano. Si TRUE, recalcula el score excluyendo ítems con DIF severo (Nivel C) en una segunda etapa.
-run_dif_analysis <- function(response_df, demographic_df, item_names, config, score_vec = NULL, purify = TRUE) {
-  # 1. Validaciones de Configuración
-  if (is.null(config$dif) || !isTRUE(config$dif$enabled)) {
-    debug("Análisis DIF deshabilitado en configuración.")
-    return(NULL)
-  }
-
-  col_group <- config$dif$group_col
-  ref_grp <- config$dif$reference_group
-  foc_grp <- config$dif$focal_group
-
+#' Prepara los datos para el análisis DIF
+#' @param response_df Dataframe de respuestas.
+#' @param demographic_df Dataframe de datos demográficos.
+#' @param col_group Nombre de la columna de grupo en datos demográficos.
+#' @param ref_grp Grupo de referencia.
+#' @param foc_grp Grupo focal.
+#' @return Dataframe procesado para DIF o NULL si no es válido.
+prepare_dif_data <- function(response_df, demographic_df, col_group, ref_grp, foc_grp) {
   # Validar existencia de columna de grupo en demográficos
   if (!col_group %in% names(demographic_df)) {
     warn(sprintf("SKIPPING DIF: Columna de grupo '%s' no encontrada en datos demográficos.", col_group))
@@ -45,87 +40,6 @@ run_dif_analysis <- function(response_df, demographic_df, item_names, config, sc
     return(NULL)
   }
 
-  # --- FUNCIÓN INTERNA DE CÁLCULO (Para iterar en purificación) ---
-  calculate_mh_stats <- function(current_df, items_to_test) {
-    # Estratificación dinámica
-    n_scores <- length(unique(current_df$SCORE))
-    if (n_scores > 20) {
-      # Deciles con manejo de empates
-      current_df$Bin <- as.numeric(cut(current_df$SCORE,
-        breaks = unique(quantile(current_df$SCORE, probs = seq(0, 1, 0.1), na.rm = TRUE)),
-        include.lowest = TRUE, labels = FALSE
-      ))
-    } else {
-      # Score directo si son pocos niveles
-      current_df$Bin <- as.factor(current_df$SCORE)
-    }
-
-    current_df <- current_df |> filter(!is.na(Bin))
-    res_list <- list()
-
-    for (item in items_to_test) {
-      # Evitar items constantes (todos 0 o todos 1)
-      if (var(current_df[[item]], na.rm = TRUE) == 0) next
-
-      # Tabla de contingencia por estrato
-      # Estructura: Bin | Group | R_correct | N_total
-      agg <- current_df |>
-        group_by(Bin, GROUP) |>
-        summarise(
-          R = sum(!!sym(item), na.rm = TRUE),
-          N = n(),
-          .groups = "drop"
-        ) |>
-        pivot_wider(names_from = GROUP, values_from = c(R, N), values_fill = 0)
-
-      # Nombres dinámicos según grupos
-      cr_R <- paste0("R_", ref_grp)
-      cf_R <- paste0("R_", foc_grp)
-      cr_N <- paste0("N_", ref_grp)
-      cf_N <- paste0("N_", foc_grp)
-
-      if (all(c(cr_R, cf_R, cr_N, cf_N) %in% names(agg))) {
-        agg <- agg |>
-          mutate(
-            A = !!sym(cr_R), # Ref Correct
-            B = !!sym(cr_N) - !!sym(cr_R), # Ref Wrong
-            C = !!sym(cf_R), # Foc Correct
-            D = !!sym(cf_N) - !!sym(cf_R), # Foc Wrong
-            T = !!sym(cr_N) + !!sym(cf_N) # Total N
-          ) |>
-          filter(T > 0)
-
-        # Mantel-Haenszel Common Odds Ratio
-        # alpha_MH = sum(A*D / T) / sum(B*C / T)
-        num <- sum((agg$A * agg$D) / agg$T, na.rm = TRUE)
-        den <- sum((agg$B * agg$C) / agg$T, na.rm = TRUE)
-
-        if (den > 0) {
-          alpha_mh <- num / den
-          delta_mh <- -2.35 * log(alpha_mh) # ETS Delta scale
-
-          # Clasificación ETS
-          abs_d <- abs(delta_mh)
-          flag <- "A (Negligible)"
-          if (abs_d >= 1.5) {
-            flag <- "C (Large)"
-          } else if (abs_d >= 1.0) flag <- "B (Moderate)"
-
-          res_list[[item]] <- data.frame(
-            ITEM = item,
-            MH_Alpha = round(alpha_mh, 4),
-            ETS_Delta = round(delta_mh, 4),
-            FLAG = flag,
-            Favors = ifelse(delta_mh > 0, foc_grp, ref_grp)
-          )
-        }
-      }
-    }
-    return(do.call(rbind, res_list))
-  }
-
-  # 3. Lógica Principal con Purificación
-
   # Validar tamaño de muestra global antes de empezar
   n_counts <- table(df_proc$GROUP)
   if (min(n_counts) < 50) {
@@ -133,24 +47,27 @@ run_dif_analysis <- function(response_df, demographic_df, item_names, config, sc
     return(NULL)
   }
 
-  debug(sprintf(
-    "Iniciando DIF (MH). Items: %d | N: %d | Grupo: %s (%s vs %s)",
-    length(item_names), nrow(df_proc), col_group, ref_grp, foc_grp
-  ))
+  return(df_proc)
+}
 
-  # ETAPA 1: CÁLCULO INICIAL
-  debug("DIF: Etapa 1 (Inicial)...")
-  # Cálculo de Raw Score inicial
-  df_proc$SCORE <- rowSums(df_proc[, item_names, drop = FALSE], na.rm = TRUE)
-
-  stage1_res <- calculate_mh_stats(df_proc, item_names)
-
-  if (is.null(stage1_res) || !purify) {
-    return(stage1_res)
+#' Crea estratos de score para el dataframe actual
+#' @param current_df Dataframe actual con la columna SCORE.
+#' @return Dataframe con la columna Bin añadida y filtrado por !is.na(Bin).
+create_score_strata <- function(current_df) {
+  # Estratificación dinámica
+  n_scores <- length(unique(current_df$SCORE))
+  if (n_scores > 20) {
+    # Deciles con manejo de empates
+    current_df$Bin <- as.numeric(cut(current_df$SCORE,
+      breaks = unique(quantile(current_df$SCORE, probs = seq(0, 1, 0.1), na.rm = TRUE)),
+      include.lowest = TRUE, labels = FALSE
+    ))
+  } else {
+    # Score directo si son pocos niveles
+    current_df$Bin <- as.factor(current_df$SCORE)
   }
 
-  # ETAPA 2: PURIFICACIÓN
-  current_df |> filter(!is.na(Bin))
+  return(current_df |> filter(!is.na(Bin)))
 }
 
 #' Calcula estadísticas Mantel-Haenszel por ítem
