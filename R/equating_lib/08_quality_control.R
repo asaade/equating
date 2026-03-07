@@ -4,12 +4,16 @@
 # Dependencias: 09_ux_helpers.R, 00_config_defs.R
 
 # Dependencias internas protegidas
-if (exists("is_safe_r_path") && !is_safe_r_path("R/equating_lib/09_ux_helpers.R")) {
+if (!exists("is_safe_r_path")) {
+  source("R/00_common_base.R")
+}
+
+if (!is_safe_r_path("R/equating_lib/09_ux_helpers.R")) {
   stop(sprintf("Fallo de seguridad: Intento de cargar librería desde ruta no segura (%s)", "R/equating_lib/09_ux_helpers.R"))
 }
 source("R/equating_lib/09_ux_helpers.R")
 
-if (exists("is_safe_r_path") && !is_safe_r_path("R/00_config_defs.R")) {
+if (!is_safe_r_path("R/00_config_defs.R")) {
   stop(sprintf("Fallo de seguridad: Intento de cargar librería desde ruta no segura (%s)", "R/00_config_defs.R"))
 }
 source("R/00_config_defs.R")
