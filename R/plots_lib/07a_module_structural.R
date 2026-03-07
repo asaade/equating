@@ -137,10 +137,18 @@ plot_forensic_item_trace <- function(ctt_results, item_id, flag_reason = "") {
   p_val <- tryCatch(ctt_results$stats$P_VAL[ctt_results$stats$ITEM == item_id], error = function(e) NA)
   r_bis <- tryCatch(ctt_results$stats$P_BIS[ctt_results$stats$ITEM == item_id], error = function(e) NA)
 
+  # Opciones válidas para la zona de azar (ignorando espacios o NA)
+  valid_options_mask <- trimws(dist_data$OPTION) != "" & !is.na(dist_data$OPTION)
+  n_options_guess <- max(1, sum(valid_options_mask))
+
   # Transformación a formato largo para ggplot
   cols_req <- c("PROP_LOW", "PROP_MIDLOW", "PROP_MIDHIGH", "PROP_HIGH")
   plot_df <- dist_data |>
-    dplyr::select(OPTION, KEY, all_of(cols_req)) |>
+    dplyr::mutate(
+      Is_Valid = trimws(OPTION) != "" & !is.na(OPTION),
+      OPTION_LABEL = ifelse(!Is_Valid, "<Vacío/Inválido>", OPTION)
+    ) |>
+    dplyr::select(OPTION, KEY, OPTION_LABEL, Is_Valid, all_of(cols_req)) |>
     tidyr::pivot_longer(cols = all_of(cols_req), names_to = "Group", values_to = "Prop") |>
     dplyr::mutate(
       Group_Num = dplyr::case_when(
@@ -150,28 +158,30 @@ plot_forensic_item_trace <- function(ctt_results, item_id, flag_reason = "") {
         Group == "PROP_HIGH" ~ 4
       ),
       Is_Key = (toupper(trimws(OPTION)) == toupper(trimws(KEY))),
-      Line_Type = ifelse(Is_Key, "Clave", "Distractor"),
-      Line_Color = ifelse(Is_Key, "black", "gray60"),
-      Line_Width = ifelse(Is_Key, 1.2, 0.6)
+      Line_Type = dplyr::case_when(
+        Is_Key ~ "Clave",
+        !Is_Valid ~ "Inválida",
+        TRUE ~ "Distractor"
+      )
     )
 
   # Gráfico
   ggplot(plot_df, aes(x = Group_Num, y = Prop, group = OPTION)) +
-    # Zona de azar (asumiendo 4 opciones = 0.25, 5 = 0.20)
-    geom_hline(yintercept = 1 / nrow(dist_data), linetype = "dotted", color = "gray80") +
+    # Zona de azar (calculada a partir del número de opciones válidas)
+    geom_hline(yintercept = 1 / n_options_guess, linetype = "dotted", color = "gray80") +
     geom_line(aes(color = Line_Type, linewidth = Line_Type, linetype = Line_Type)) +
     geom_point(aes(fill = Line_Type), shape = 21, size = 2, color = "white", stroke = 0.5) +
 
     # Etiquetas de opciones al final de la línea
     geom_text(
       data = plot_df |> dplyr::filter(Group_Num == 4),
-      aes(label = OPTION, color = Line_Type),
+      aes(label = OPTION_LABEL, color = Line_Type),
       hjust = -0.5, fontface = "bold", size = 3
     ) +
-    scale_color_manual(values = c("Clave" = "black", "Distractor" = "gray60")) +
-    scale_fill_manual(values = c("Clave" = "black", "Distractor" = "gray60")) +
-    scale_linewidth_manual(values = c("Clave" = 1.0, "Distractor" = 0.5)) +
-    scale_linetype_manual(values = c("Clave" = "solid", "Distractor" = "longdash")) +
+    scale_color_manual(values = c("Clave" = "black", "Distractor" = "gray60", "Inválida" = "#D55E00")) +
+    scale_fill_manual(values = c("Clave" = "black", "Distractor" = "gray60", "Inválida" = "#D55E00")) +
+    scale_linewidth_manual(values = c("Clave" = 1.0, "Distractor" = 0.5, "Inválida" = 0.5)) +
+    scale_linetype_manual(values = c("Clave" = "solid", "Distractor" = "longdash", "Inválida" = "dotted")) +
     scale_x_continuous(breaks = 1:4, labels = c("Bajo", "Medio Bajo", "Medio Alto", "Alto"), limits = c(0.8, 3.3)) +
     scale_y_continuous(limits = c(0, 1), labels = scales::percent) +
     labs(
