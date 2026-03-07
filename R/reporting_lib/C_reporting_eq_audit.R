@@ -121,27 +121,45 @@ audit_02_precision <- function(tables, config) {
   cat(paste0(strrep("-", 100), "\n"))
   if (!is.null(tables)) {
     forms <- setdiff(unique(tables$SOURCE_FORM), config$system$reference_form)
-    for (frm in forms) {
-      sub_t <- tables[tables$SOURCE_FORM == frm, ]
-      if (nrow(sub_t) == 0) next
-      sc_min <- min(sub_t$RAW_SCORE, na.rm = TRUE)
-      sc_max <- max(sub_t$RAW_SCORE, na.rm = TRUE)
+    sub_t <- tables[tables$SOURCE_FORM %in% forms, , drop = FALSE]
+    if (nrow(sub_t) > 0) {
+      valid_forms <- unique(sub_t$SOURCE_FORM)
+      f_form <- factor(sub_t$SOURCE_FORM, levels = valid_forms)
+
+      sc_min <- tapply(sub_t$RAW_SCORE, f_form, min, na.rm = TRUE)
+      sc_max <- tapply(sub_t$RAW_SCORE, f_form, max, na.rm = TRUE)
       rng <- sc_max - sc_min
-      cut1 <- sc_min + (rng * 0.33)
-      cut2 <- sc_min + (rng * 0.66)
-      see_low <- mean(sub_t$SEE[sub_t$RAW_SCORE <= cut1], na.rm = TRUE)
-      see_mid <- mean(sub_t$SEE[sub_t$RAW_SCORE > cut1 & sub_t$RAW_SCORE <= cut2], na.rm = TRUE)
-      see_high <- mean(sub_t$SEE[sub_t$RAW_SCORE > cut2], na.rm = TRUE)
-      mean_see <- mean(sub_t$SEE, na.rm = TRUE)
-      profile <- "FLAT"
-      if (!is.na(see_mid) && see_mid > 0) {
-        if (see_low > 1.3 * see_mid || see_high > 1.3 * see_mid) profile <- "U-SHAPE (Extr)"
-      }
-      cat(paste0(
-        pad_str(frm, 12), fmt_num(mean_see, 3, 9), " | ",
+
+      cut1_form <- sc_min + (rng * 0.33)
+      cut2_form <- sc_min + (rng * 0.66)
+
+      idx <- as.integer(f_form)
+      cut1_full <- cut1_form[idx]
+      cut2_full <- cut2_form[idx]
+
+      mask_low <- sub_t$RAW_SCORE <= cut1_full
+      mask_mid <- sub_t$RAW_SCORE > cut1_full & sub_t$RAW_SCORE <= cut2_full
+      mask_high <- sub_t$RAW_SCORE > cut2_full
+
+      see_low <- tapply(ifelse(mask_low, sub_t$SEE, NA_real_), f_form, mean, na.rm = TRUE)
+      see_mid <- tapply(ifelse(mask_mid, sub_t$SEE, NA_real_), f_form, mean, na.rm = TRUE)
+      see_high <- tapply(ifelse(mask_high, sub_t$SEE, NA_real_), f_form, mean, na.rm = TRUE)
+      mean_see <- tapply(sub_t$SEE, f_form, mean, na.rm = TRUE)
+
+      profile <- rep("FLAT", length(valid_forms))
+      extr_mask <- !is.na(see_mid) & see_mid > 0 & (
+        (!is.na(see_low) & see_low > 1.3 * see_mid) |
+        (!is.na(see_high) & see_high > 1.3 * see_mid)
+      )
+      extr_mask[is.na(extr_mask)] <- FALSE
+      profile[extr_mask] <- "U-SHAPE (Extr)"
+
+      lines <- paste0(
+        pad_str(valid_forms, 12), fmt_num(mean_see, 3, 9), " | ",
         fmt_num(see_low, 3, 9), fmt_num(see_mid, 3, 9), fmt_num(see_high, 3, 9), " | ",
         pad_str(profile, 15), "\n"
-      ))
+      )
+      cat(paste(lines, collapse = ""))
     }
   }
 }
