@@ -328,9 +328,10 @@ optimize_loglinear_smoothing <- function(ft, n_total, config, scale_id = "UNKNOW
     ic_crit <- "AIC"
   }
 
-  min_ic_val <- min(valid_candidates[[ic_crit]])
+  ic_values <- valid_candidates[[ic_crit]]
+  min_ic_val <- min(ic_values, na.rm = TRUE)
   tolerance <- config$smoothing$ic_tolerance %||% 2.0
-  parsimony_set <- valid_candidates[valid_candidates[[ic_crit]] <= (min_ic_val + tolerance), ]
+  parsimony_set <- valid_candidates[!is.na(ic_values) & is.finite(ic_values) & (ic_values <= (min_ic_val + tolerance)), ]
   best_row <- parsimony_set[order(parsimony_set$Params_K, parsimony_set[[ic_crit]]), ][1, ]
 
   winner_obj <- model_list[[best_row$ModelID]]
