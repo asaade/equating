@@ -154,6 +154,7 @@ eq_results <- execute_safely(
   "FASE 4: Equating"
 )
 track_stage(audit, "Equating_Obj", input = calib_df, output = eq_results, output_dir_root = config$project$output_dir, save_rds = TRUE)
+
 eq_tables_list <- if (!is.null(eq_results)) eq_results$tables else NULL
 track_stage(audit, "Equating_Tables", input = calib_df, output = eq_tables_list, output_dir_root = config$project$output_dir, save_rds = FALSE)
 
@@ -224,7 +225,7 @@ final_scores <- execute_safely(
   {
     # Decisión de población objetivo
 
-    if(exists('scored_df')) rm(scored_df)
+    if (exists("scored_df")) rm(scored_df)
     res <- apply_final_scoring(
       item_scored_df = target_df,
       irt_scores_df = irt_results$scores,
@@ -238,7 +239,7 @@ final_scores <- execute_safely(
 )
 
 track_stage(audit, "Scoring_Final", input = target_df, output = final_scores, output_dir_root = config$project$output_dir)
-if(exists('target_df')) rm(target_df)
+if (exists("target_df")) rm(target_df)
 
 # ---------------------------------------------------------
 # FASE 7: GENERACIÓN DE REPORTES CTT (Evidencia Técnica)

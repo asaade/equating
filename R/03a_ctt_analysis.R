@@ -294,8 +294,8 @@ check_dimensionality <- function(item_mat, threshold_ratio = 3, threshold_var = 
   u_val <- NA_real_
   try({
     # Usar cor_mat pre-calculada
-    ud <- psych::unidim(cor_mat)
-    u_val <- as.numeric(ud$uni$u)
+    ud <- as.list(psych::unidim(cor_mat)$uni)$u
+    u_val <- as.numeric(ud)
   }, silent = TRUE)
 
   list(
@@ -333,7 +333,7 @@ analyze_distractor_efficiency <- function(raw_df, scored_df, items) {
   total_score <- rowSums(score_mat, na.rm = TRUE)
 
   # Grupos de desempeño (Terciles)
-  breaks <- quantile(total_score, probs = c(0, 0.33, 0.66, 1), na.rm = TRUE)
+  breaks <- quantile(total_score, probs = c(0, 0.25, 0.50, 0.75, 1), na.rm = TRUE)
 
   n_unique <- if (requireNamespace("data.table", quietly = TRUE)) {
     data.table::uniqueN(breaks)
@@ -341,12 +341,7 @@ analyze_distractor_efficiency <- function(raw_df, scored_df, items) {
     length(unique(breaks))
   }
 
-  if (n_unique < 4) {
-    groups <- cut(total_score, 3, labels = c("Low", "Mid", "High"))
-  } else {
-    groups <- cut(total_score, breaks = breaks, labels = c("Low", "Mid", "High"), include.lowest = TRUE)
-  }
-
+  groups <- cut(total_score, breaks = breaks, labels = c("Low", "MidLow", "MidHigh", "High"), include.lowest = TRUE)
   results_list <- list()
 
   for (itm in valid_items) {
@@ -395,7 +390,8 @@ analyze_distractor_efficiency <- function(raw_df, scored_df, items) {
       OPTION    = opts,
       PROP      = as.numeric(prop_total),
       PROP_LOW  = if ("Low" %in% colnames(props)) as.numeric(props[, "Low"]) else NA_real_,
-      PROP_MID  = if ("Mid" %in% colnames(props)) as.numeric(props[, "Mid"]) else NA_real_,
+      PROP_MIDLOW  = if ("MidLow" %in% colnames(props)) as.numeric(props[, "MidLow"]) else NA_real_,
+      PROP_MIDHIGH  = if ("MidHigh" %in% colnames(props)) as.numeric(props[, "MidHigh"]) else NA_real_,
       PROP_HIGH = if ("High" %in% colnames(props)) as.numeric(props[, "High"]) else NA_real_,
       R_BIS_OPT = round(rbis_vec, 3)
     )
