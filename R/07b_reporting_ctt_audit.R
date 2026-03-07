@@ -37,32 +37,53 @@ fmt_num <- function(x, digits = 4, width = 8) {
   res
 }
 
+# --- VECTORIZED UTILS ---
+
+# Optimization rationale: draw_ascii_bar was previously scalar-based and called
+# via vapply, incurring significant overhead for each element. By refactoring it
+# to use native vectorized operations (pmin, pmax, ifelse, strrep), we leverage
+# R's internal efficiency for processing vectors, reducing both CPU time and
+# memory allocation overhead during report generation.
+
 draw_ascii_bar <- function(val, limit = 3, width = 10, center = FALSE) {
-  if (is.na(val)) {
-    return(pad_str("", width))
-  }
+  if (length(val) == 0) return(character(0))
+
+  res <- rep(pad_str("", width), length(val))
+  na_idx <- is.na(val)
+  if (all(na_idx)) return(res)
+
   eff_w <- width - 2
+  valid_v <- val[!na_idx]
+
   if (center) {
-    norm_val <- max(-1, min(1, val / limit))
+    norm_v <- pmax(-1, pmin(1, valid_v / limit))
     center_idx <- floor(eff_w / 2)
-    len <- floor(abs(norm_val) * (eff_w / 2))
-    chars <- strrep(" ", eff_w)
-    fill_char <- if (val < 0) "<" else ">"
-    if (abs(val) > limit) fill_char <- "!"
-    left <- center_idx - (if (val < 0) len else 0)
-    substr(chars, left, left + len) <- strrep(fill_char, len + 1)
-    substr(chars, center_idx, center_idx) <- "|"
-    return(paste0("[", chars, "]"))
+    len_v <- floor(abs(norm_v) * (eff_w / 2))
+
+    fill_char_v <- ifelse(valid_v < 0, "<", ">")
+    fill_char_v[abs(valid_v) > limit] <- "!"
+
+    chars_v <- rep(strrep(" ", eff_w), length(valid_v))
+    left_v <- center_idx - ifelse(valid_v < 0, len_v, 0)
+    right_v <- left_v + len_v
+
+    # Vectorized assignment to characters
+    substr(chars_v, left_v, right_v) <- strrep(fill_char_v, len_v + 1)
+
+    # Ensure center_idx is valid for substr (R is 1-based)
+    c_idx <- pmax(1, center_idx)
+    substr(chars_v, c_idx, c_idx) <- "|"
+
+    res[!na_idx] <- paste0("[", chars_v, "]")
   } else {
-    mag <- min(abs(val), limit) / limit
-    len <- round(mag * eff_w)
-    len <- max(0, min(len, eff_w))
-    char <- "#"
-    if (val > limit * 0.8) char <- "!"
-    bar <- strrep(char, len)
-    space <- strrep(" ", eff_w - len)
-    return(paste0("[", bar, space, "]"))
+    mag_v <- pmin(abs(valid_v), limit) / limit
+    len_v <- pmax(0, pmin(eff_w, round(mag_v * eff_w)))
+
+    char_v <- ifelse(valid_v > limit * 0.8, "!", "#")
+
+    res[!na_idx] <- paste0("[", strrep(char_v, len_v), strrep(" ", eff_w - len_v), "]")
   }
+  res
 }
 
 print_header <- function(title) {
@@ -126,7 +147,7 @@ print_audit_moments <- function(moments, desc) {
 
     delta <- moments$MEAN_EQ - d_raw$Mean
     cohen_d <- ifelse(!is.na(d_raw$SD) & d_raw$SD > 0, delta / d_raw$SD, 0)
-    vis_d <- vapply(cohen_d, draw_ascii_bar, FUN.VALUE = character(1), limit = 0.8, width = 14, center = TRUE)
+    vis_d <- draw_ascii_bar(cohen_d, limit = 0.8, width = 14, center = TRUE)
 
     lines <- paste0(
       pad_str(moments$FORM, 12), fmt_num(moments$N, 0, 6), " | ",
@@ -191,7 +212,7 @@ print_audit_drift <- function(drift) {
     ))
     cat(paste0(strrep("-", 100), "\n"))
 
-    vis_z <- vapply(drift_top$Z_SCORE, draw_ascii_bar, FUN.VALUE = character(1), limit = 3.0, width = 14, center = TRUE)
+    vis_z <- draw_ascii_bar(drift_top$Z_SCORE, limit = 3.0, width = 14, center = TRUE)
 
     lines <- paste0(
       pad_str(rownames(drift_top), 12), pad_str(drift_top$STATUS, 8), fmt_num(drift_top$P_SRC, 2, 7),
