@@ -143,6 +143,7 @@ audit_score_impact <- function(final_scores, raw_dat = NULL, eq_results = NULL, 
           pad_str(n_pass, 15),
           sprintf("%.1f%%", pct_pass), "\n"
         ))
+        }
       }
     } else {
       cat("No se pudieron identificar las columnas de etiqueta/valor en la tabla de cortes (audit_critical).\n")
