@@ -107,9 +107,11 @@ plot_drift_forensics <- function(data_input) {
     return(NULL)
   }
 
-  # Transformación Delta: 13 + 4z
+  # Transformación Delta: 13 + 4z (Dificultad ETS)
   p_to_delta <- function(p) {
-    p_safe <- pmax(0.001, pmin(0.999, as.numeric(p)))
+    p_num <- suppressWarnings(as.numeric(p))
+    if (all(is.na(p_num))) return(rep(NA_real_, length(p)))
+    p_safe <- pmax(0.001, pmin(0.999, p_num))
     13 + 4 * qnorm(1 - p_safe)
   }
 
@@ -122,10 +124,48 @@ plot_drift_forensics <- function(data_input) {
       # Clasificación
       Status_Audit = dplyr::case_when(
         STATUS != "KEPT" ~ "ELIMINADO",
-        abs(Z_Safe) > 2 ~ "ALERTA (Mantenido)",
+        abs(Z_Safe) > 2.5 ~ "ALERTA (Mantenido)",
         TRUE ~ "ESTABLE"
       ),
       Status_Audit = factor(Status_Audit, levels = c("ESTABLE", "ALERTA (Mantenido)", "ELIMINADO"))
+    )
+
+  # Resumen de Auditoría por Forma/Link
+  group_cols <- intersect(c("FORM", "LINK"), names(plot_data))
+  summary_data <- plot_data |>
+    dplyr::group_by(across(all_of(group_cols))) |>
+    dplyr::summarize(
+      n_total = dplyr::n(),
+      n_kept = sum(STATUS == "KEPT"),
+      r_anchor = NA_real_,
+      .groups = "drop"
+    )
+
+  # Intentar inyectar correlación si viene en el input consolidado
+  if (!is.null(data_input$link_quality)) {
+    lq <- data_input$link_quality
+    if ("LINK" %in% names(summary_data) && "LINK" %in% names(lq)) {
+      summary_data <- summary_data |>
+        dplyr::left_join(lq |> dplyr::select(LINK, R_ANCHOR), by = "LINK") |>
+        dplyr::mutate(r_anchor = R_ANCHOR)
+    } else if ("FORM" %in% names(summary_data)) {
+      # Fallback: Extraer de LINK en lq para unir por FORM (Source Form)
+      lq_sub <- lq |>
+        dplyr::mutate(JOIN_FORM = sub("->.*", "", LINK)) |>
+        dplyr::select(JOIN_FORM, R_ANCHOR)
+      summary_data <- summary_data |>
+        dplyr::left_join(lq_sub, by = c("FORM" = "JOIN_FORM")) |>
+        dplyr::mutate(r_anchor = R_ANCHOR)
+    }
+  }
+
+  summary_data <- summary_data |>
+    dplyr::mutate(
+      Label = sprintf("N Total: %d\nN Kept: %d%s",
+                      n_total, n_kept,
+                      ifelse(is.na(r_anchor), "", sprintf("\nCorr: %.3f", r_anchor))),
+      # Posicionamiento dinámico (esquina superior izquierda)
+      x_pos = -Inf, y_pos = Inf
     )
 
   ggplot(plot_data, aes(x = Delta_Ref, y = Delta_New)) +
@@ -134,13 +174,17 @@ plot_drift_forensics <- function(data_input) {
     geom_point(aes(shape = Status_Audit, fill = Status_Audit, size = Status_Audit), color = "black", stroke = 0.5) +
     ggrepel::geom_text_repel(
       data = subset(plot_data, Status_Audit != "ESTABLE"),
-      aes(label = ITEM_ID), size = 2.5, fontface = "bold", max.overlaps = 20
+      aes(label = ITEM_ID), size = 2.5, fontface = "bold", max.overlaps = 50
+    ) +
+    geom_text(
+      data = summary_data, aes(x = x_pos, y = y_pos, label = Label),
+      hjust = -0.1, vjust = 1.2, size = 3, fontface = "italic", color = "#444444"
     ) +
     facet_wrap(~FORM) +
     scale_shape_manual(values = c("ESTABLE" = 21, "ALERTA (Mantenido)" = 21, "ELIMINADO" = 4)) +
-    scale_fill_manual(values = c("ESTABLE" = "white", "ALERTA (Mantenido)" = "gray80", "ELIMINADO" = "black")) +
+    scale_fill_manual(values = c("ESTABLE" = "white", "ALERTA (Mantenido)" = "#feb24c", "ELIMINADO" = "black")) +
     scale_size_manual(values = c("ESTABLE" = 1.5, "ALERTA (Mantenido)" = 2.5, "ELIMINADO" = 3)) +
-    coord_fixed(xlim = c(6, 20), ylim = c(6, 20)) +
+    coord_fixed() +
     labs(
       title = "Estabilidad del Ancla (Delta Plot)",
       subtitle = "Detección de Drift mediante Regresión Robusta Iterativa",
