@@ -4,15 +4,6 @@
 # Dependencias: R/00_common_base.R, R/00_config_loader.R
 # ==============================================================================
 
-## TODO: Valorar la conveniencia de:
-## 1. Repetir el análisis para cada "subtema" o "subárea".
-## 2. Coordinar mejor la selección de metodología y sus reportes (CTT o IRT)
-## 3. Revisar las alertas y efectos de violaciones a las metodologías
-## 4. Flexibilizar la incorporación/selección de variables demográficas
-## 5. Revisar la calidad del reporte de auditoría como informe final único
-## 6. Incorporar el análisis DIF al proceso (hoy se encuentra aislado).
-
-
 rm(list = ls())
 gc()
 
