@@ -1,0 +1,87 @@
+# ==============================================================================
+# CONFIGURACIÓN DEL PIPELINE PSICOMÉTRICO INDUSTRIAL (v25.0 - Final Clean)
+# ==============================================================================
+
+#####################################
+# Variables obligatorias
+#####################################
+
+project:
+  name: "PROYECTO_METROPOL_2025"
+  output_dir: "./output"
+
+system:
+  log_dir: "./logs"
+  reference_form: "FORMA_01"
+
+# --- RUTAS DE ENTRADA ---
+files:
+  dat: "data/input/METROPOL.DAT"
+  metadata: "data/input/items_metadata.csv"
+  attributes: "data/input/demographics.csv"
+
+production_scoring:
+  score_all_population: false
+  output_file: "Poblacion_Total_Calificada.csv"
+
+specs:
+  len_fisica: 128
+
+  # Si los ítems fueran de 2 caracteres o tuvieran separador, cambiar item_width aquí
+  data_structure:
+    item_width: 1
+    item_prefix: "P_"
+
+    # Define el orden exacto de aparición en el archivo de respuestas
+    header:
+      - { name: "ID",    width: 9, type: "c" }
+      - { name: "SKIP",  width: 1, type: "_" } # type: "_" le dice al script que borre esta col
+      - { name: "FORMA", width: 2, type: "c" }
+      # Si hubiera más campos (ej. Región en el DAT), agregar líneas aquí:
+      # - { name: "REGION", width: 3, type: "c" }
+
+# --- DEFINICIÓN DE FORMAS (DISEÑO DE ENLACE) ---
+forms:
+  FORMA_01:
+    codes: ["01", "1"]
+    key_row: 1
+    csv_col: "POS_F1"
+  FORMA_02:
+    codes: ["02", "2"]
+    key_row: 2
+    csv_col: "POS_F2"
+
+# --- ESCALAMIENTO Y NIVELES (SCORING) ---
+scoring:
+  performance_levels:
+    - min_score: 0.0      # Todo lo menor a C1 cae aquí
+      label: "Insuficiente"
+      scaled_score: 700
+    - min_score: 68   # Punto de Corte 1 (C1)
+      label: "Satisfactorio"
+      scaled_score: 1000
+    - min_score: 95   # Punto de Corte 2 (C2)
+      label: "Sobresaliente"
+      scaled_score: 1150
+    - max_scaled_score: 1300
+    # El último nivel captura todo desde 1150 hasta Infinito (o Max)
+
+# --- MUESTREO PARA CALIBRACIÓN ---
+sampling:
+  enabled: true
+  size_per_form: 1500
+  seed: 11838867
+
+historical_anchoring:
+  enabled: false
+  irt_parameters_file: "data/input/historical_irt_params.csv"
+  ctt_equating_table: "data/input/historical_ctt_equating.csv"
+
+smoothing:
+  ic_criterion: "AIC"
+
+dif:
+  enabled: true
+  group_col: "SEXO"
+  reference_group: "F"
+  focal_group: "M"

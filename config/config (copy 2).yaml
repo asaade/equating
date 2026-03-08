@@ -1,0 +1,177 @@
+# ==============================================================================
+# CONFIGURACIÓN DEL PIPELINE PSICOMÉTRICO INDUSTRIAL (v25.0 - Final Clean)
+# ==============================================================================
+
+project:
+  name: "DERECHO 2001"
+  output_dir: "./output"
+
+system:
+  archive_output: true
+  use_parallel: true
+  n_cores: 6
+  log_dir: "./logs"
+  reference_form: "FORMA_01"
+
+# --- RUTAS DE ENTRADA ---
+files:
+  dat: "data/input/v_final_respuestas.dat"
+  metadata: "data/input/v_final_metadata.csv"
+  attributes: "data/input/demographics.csv"
+
+# --- ESPECIFICACIONES TÉCNICAS DEL DAT ---
+exclusions:
+  enabled: false
+  items: []
+
+specs:
+  len_fisica: 45
+
+  # Si los ítems fueran de 2 caracteres o tuvieran separador, cambiar item_width aquí
+  data_structure:
+    item_width: 1
+    item_prefix: "P_"
+
+    # Define el orden exacto de aparición en el archivo de respuestas
+    header:
+      - { name: "ID",    width: 9, type: "c" }
+      - { name: "SKIP",  width: 1, type: "_" } # type: "_" le dice al script que ignore esta col
+      - { name: "FORMA", width: 2, type: "c" }
+      # Si hubiera más campos (ej. Región en el DAT), agregar líneas aquí:
+      # - { name: "REGION", width: 3, type: "c" }
+
+flags:
+  min_resp_person: 10
+
+# --- DEFINICIÓN DE FORMAS (DISEÑO DE ENLACE) ---
+forms:
+  FORMA_01:
+    codes: ["01", "1"]
+    csv_col: "POS_1"
+  FORMA_02:
+    codes: ["02", "2"]
+    csv_col: "POS_2"
+  FORMA_03:
+    codes: ["03", "3"]
+    csv_col: "POS_3"
+  FORMA_04:
+    codes: ["04", "4"]
+    csv_col: "POS_4"
+  FORMA_05:
+    codes: ["05", "5"]
+    csv_col: "POS_5"
+
+# --- ESCALAMIENTO Y NIVELES (SCORING) ---
+scoring:
+  performance_levels:
+    - min_score: 0.0      # Todo lo menor a C1 cae aquí
+      label: "Insuficiente"
+      scaled_score: 700
+    - min_score: 25   # Punto de Corte 1 (C1)
+      label: "Satisfactorio"
+      scaled_score: 1000
+    - min_score:   40 # Punto de Corte 2 (C2)
+      label: "Sobresaliente"
+      scaled_score: 1150
+    - max_scaled_score: 1300
+    # El último nivel captura todo desde 1150 hasta Infinito (o Max)
+
+  method: "PIECEWISE"
+  source: "CTT"
+
+production_scoring:
+  score_all_population: false
+  output_file: "Poblacion_Total_Calificada.csv"
+
+# --- MUESTREO PARA CALIBRACIÓN ---
+sampling:
+  enabled: true
+  size_per_form: 5000
+  seed: 11838867
+
+# --- EQUATING CTT ---
+equating:
+  boot_reps: 350
+  ## "nominal weights", "tucker", "levine",
+  ## "frequency estimation", "braun/holland", o "chained"
+  # method: "frequency estimation"
+  smoothing_metric: "BIC"
+  # smoothing: false
+  # smoothing_degrees: [3, 2]
+  thresholds:
+    anchor_correlation: 0.70
+
+mirt:
+  model: "3PL"
+  method: "EM"
+  cycles: 2000
+  quadpts: 61
+  tol: 0.0001
+  constraints:
+    fix_guessing: true
+    guessing_value: 0.2
+  drift_analysis: true
+  compute_m2: false
+  compute_q3: true
+
+historical_anchoring:
+  enabled: true
+  irt_parameters_file: "data/input/historical_irt_params.csv"
+  ctt_equating_table: "data/input/historical_ctt_equating.csv"
+
+
+# Mapeo: Nombre_Testlet -> Lista de Ítems
+testlets:
+  enabled: false
+  groups:
+    TEXTO_A: ["IT_01", "IT_02", "IT_03", "IT_04"]
+    GRAFICO_B: ["IT_10", "IT_11", "IT_12"]
+    # Los ítems que no estén aquí se tratarán como autónomos cargando solo en F1
+
+
+dif:
+  enabled: true
+  group_col: "SEXO"
+  reference_group: "F"
+  focal_group: "M"
+
+# --- UMBRALES DE CALIDAD DE ÍTEM(CONTROL ESTADÍSTICO) ---
+thresholds:
+  # CTT
+  ctt_p_val_min: 0.05
+  ctt_p_val_max: 0.95
+  ctt_pbis_min: 0.10
+  ctt_distractor_max_pbis: 0.05
+  ctt_alpha: 0.7
+
+
+network:
+  # Costo base por salto en el grafo (Penalización por complejidad)
+  # Valor alto = Prefiere rutas directas aunque tengan menor correlación
+  # Valor bajo = Prefiere rutas largas si la correlación acumulada es mejor
+  edge_base_cost: 0.5
+
+  # Correlación mínima para considerar un enlace válido
+  # Enlaces por debajo de este umbral se descartan (peso infinito)
+  min_correlation: 0.70
+
+  # Tope de tamaño de muestra para el cálculo de peso (Capping)
+  # A partir de este N, el beneficio en error estándar es marginal
+  # Evita que muestras masivas de baja calidad dominen el grafo
+  max_sample_cap: 3500
+
+  # Potencia a la que se eleva la correlación en la fórmula de peso
+  # 2 = Cuadrática (Estándar)
+  # 3 = Cúbica (Más estricto con la calidad psicométrica)
+  cor_power: 2
+
+  # Margen de seguridad para extrapolación en los extremos de la escala
+  # Define cuánto se permite extender la línea recta más allá del rango observado
+  extrap_buffer: 0.5
+
+  # Límite de SMD (diferencia de la media de dificultades de las anclas)
+  # Más alto lo hace más estricto
+  max_anchor_smd: 0.5
+
+  time_lag_cost: 0.10
+  context_mismatch_cost: 0.20
