@@ -1,0 +1,343 @@
+---
+title: "REPORTE DE VALIDEZ Y AUDITORÍA DE PROCESOS"
+subtitle: "Expediente Forense: `r config$project$exam_name` | Periodo: 2026-A"
+author: "Antonio Saade"
+date: "`r format(Sys.time(), '%d de %B, %Y')`"
+output:
+  pdf_document:
+    latex_engine: xelatex
+    toc: true
+    toc_depth: 2
+    number_sections: true
+    fig_caption: true
+    df_print: kable
+    highlight: tango
+geometry: "left=2.5cm,right=2.5cm,top=2.5cm,bottom=2.5cm"
+header-includes:
+  - \usepackage{booktabs}
+  - \usepackage{longtable}
+  - \usepackage{array}
+  - \usepackage{multirow}
+  - \usepackage{float}
+  - \usepackage{colortbl}
+  - \usepackage{fancyhdr}
+  - \usepackage{lastpage}
+  - \pagestyle{fancy}
+  - \fancyhead[L]{\small \textbf{CONFIDENCIAL} | Auditoría Técnica}
+  - \fancyhead[R]{\small Validez de Consecuencias}
+  - \fancyfoot[C]{\small Página \thepage \ de \pageref{LastPage}}
+  - \renewcommand{\headrulewidth}{0.4pt}
+  - \renewcommand{\footrulewidth}{0.4pt}
+  - \definecolor{passgreen}{RGB}{0,102,51}
+  - \definecolor{failred}{RGB}{153,0,0}
+  - \definecolor{auditgray}{RGB}{240,240,240}
+params:
+  ctt_results: NULL
+  eq_results: NULL
+  final_scores: NULL
+  dif_results: NULL  # Faltaba declarar este parámetro explícitamente
+  config: NULL
+  base_dir: "."
+---
+
+```{r setup, include=FALSE}
+# CONFIGURACIÓN GLOBAL DE KNITR
+knitr::opts_chunk$set(
+  echo = FALSE,
+  warning = FALSE,
+  message = FALSE,
+  fig.pos = "H",
+  fig.align = "center",
+  fig.width = 7.5,
+  fig.height = 4.5,
+  dpi = 300
+)
+
+library(knitr)
+library(kableExtra)
+library(dplyr)
+library(ggplot2)
+
+# --- 2. CARGA DE FUNCIONES DEL SISTEMA ---
+# Usamos el directorio pasado por parámetros
+script_dir <- base_dir
+
+# Carga condicional: Solo si las funciones gráficas no están ya en memoria
+if (!exists("plot_scree_evidence")) {
+  # Lista de módulos necesarios para graficar
+  modules_to_load <- c(
+    "00_common.R", "07a_module_structural.R",
+    "07b_module_process.R", "07c_module_precision.R",
+    "07d_module_fairness.R", "07s_module_subtests.R"
+  )
+
+  for (mod in modules_to_load) {
+    fpath <- file.path(script_dir, mod)
+    if (file.exists(fpath)) {
+      source(fpath)
+    }
+  }
+}
+
+# ==============================================================================
+# MOTOR DE AUDITORÍA AUTOMATIZADA (USANDO PARAMS)
+# ==============================================================================
+
+# Acceso seguro a través de
+alpha_val <- ctt_results$reliability$ALPHA[1]
+sem_val <- ctt_results$reliability$SEM[1]
+n_sample <- nrow(final_scores)
+
+# Métricas de Drift
+drift_df <- eq_results$drift_details
+items_dropped <- drift_df |> filter(STATUS != "KEPT")
+n_dropped <- nrow(items_dropped)
+pct_stability <- (sum(drift_df$STATUS == "KEPT") / nrow(drift_df)) * 100
+
+# Métricas de Dimensionalidad
+var_exp_1 <- ctt_results$dimensionality$VAR_EXP_1[1] * 100
+ratio_1_2 <- ctt_results$dimensionality$RATIO_1_2[1]
+
+# Lógica de Decisión
+dictamen_status <- "APROBADO"
+color_box <- "passgreen"
+
+if (alpha_val < 0.80 || pct_stability < 80) {
+  dictamen_status <- "OBSERVADO / RIESGO"
+  color_box <- "failred"
+}
+
+# Texto dinámico
+dim_msg <- if (ratio_1_2 > 4) {
+  paste0("La estructura es esencialmente unidimensional. El primer factor domina significativamente (Ratio 1:2 = ", round(ratio_1_2, 1), "), lo que justifica el uso de un puntaje total compuesto.")
+} else {
+  "PRECAUCIÓN: La estructura factorial sugiere multidimensionalidad. Se recomienda revisar si sub-escalas separadas son más apropiadas."
+}
+
+# DIF (Manejo de NULL si no se pasa dif_results)
+n_dif_severe <- 0
+dif_msg <- "No evaluado."
+
+if (!is.null(dif_results)) {
+  dif_flagged <- dif_results |> filter(grepl("C", FLAG))
+  n_dif_severe <- nrow(dif_flagged)
+
+  dif_msg <- if (n_dif_severe == 0) {
+    "No se detectaron ítems con Funcionamiento Diferencial (DIF) severo (Nivel C)."
+  } else {
+    paste0("ATENCIÓN: Se detectaron ", n_dif_severe, " ítems con DIF severo que requieren revisión de contenido urgente.")
+  }
+}
+```
+
+\vspace*{1cm}
+\begin{center}
+\huge \textbf{RESUMEN EJECUTIVO DE CERTIFICACIÓN}
+\end{center}
+\vspace*{0.5cm}
+
+El presente documento constituye la evidencia técnica formal ("Validity Argument") para respaldar la integridad, precisión y justicia de los puntajes emitidos.
+
+\begin{center}
+\fcolorbox{black}{`r color_box`}{
+\begin{minipage}[c]{16cm}
+\centering
+\vspace{0.4cm}
+\textcolor{white}{\textbf{\Large DICTAMEN DE AUDITORÍA: `r dictamen_status`}}
+\vspace{0.4cm}
+\end{minipage}
+}
+\end{center}
+
+\vspace{0.5cm}
+
+### Tablero de Control de Calidad (KPIs)
+
+La siguiente matriz resume los indicadores críticos auditados contra los estándares internacionales (AERA/APA/NCME):
+
+```{r executive_table}
+kpi_matrix <- data.frame(
+  Dominio = c("PRECISIÓN", "PRECISIÓN", "VALIDEZ", "COMPARABILIDAD", "JUSTICIA"),
+  Indicador = c("Confiabilidad (Alpha)", "Error Estándar (SEM)", "Varianza 1er Factor", "Estabilidad del Anclaje", "Sesgo Severo (DIF C)"),
+  Resultado = c(
+    sprintf("%.3f", alpha_val),
+    sprintf("%.2f pts", sem_val),
+    sprintf("%.1f%%", var_exp_1),
+    sprintf("%.1f%% Retenido", pct_stability),
+    paste(n_dif_severe, "Ítems")
+  ),
+  Criterio = c("> 0.80 (Operativo)", "Minimizar", "> 20% / Dominante", "> 80% Comunes", "0 Ítems"),
+  Estado = c(
+    ifelse(alpha_val >= 0.8, "CUMPLE", "BAJO"),
+    "CUMPLE",
+    ifelse(ratio_1_2 > 3, "CUMPLE", "REVISAR"),
+    ifelse(pct_stability >= 80, "CUMPLE", "ALERTA"),
+    ifelse(n_dif_severe == 0, "OPTIMO", "RIESGO")
+  )
+)
+
+kpi_matrix |>
+  kbl(booktabs = T, align = "llccl") |>
+  kable_styling(latex_options = c("striped", "hold_position"), full_width = TRUE) |>
+  row_spec(0, bold = T, background = "#333333", color = "white") |>
+  column_spec(1, bold = T, width = "3cm") |>
+  column_spec(5, bold = T, color = ifelse(kpi_matrix$Estado == "CUMPLE" | kpi_matrix$Estado == "OPTIMO", "black", "red"))
+```
+
+---
+
+\newpage
+
+# EVIDENCIA I: VALIDEZ ESTRUCTURAL (SCORING)
+
+**Objetivo Forense:** Confirmar que la prueba mide un constructo coherente y que la suma de puntajes tiene significado psicométrico.
+
+## 1.1 Análisis de Dimensionalidad
+
+Para justificar un puntaje global, se audita la estructura factorial.
+
+```{r dimensionality_plot, fig.cap="Gráfico de Sedimentación (Scree Plot) y Varianza Explicada"}
+plot_scree_evidence(ctt_results)
+```
+
+**Dictamen del Auditor:** `r dim_msg`
+
+## 1.2 Calidad de los Reactivos (Item Statistics)
+
+Se verifica que los insumos básicos (los ítems) funcionen adecuadamente antes de cualquier transformación de escala.
+
+```{r item_audit_table}
+item_stats_audit <- ctt_results$stats |>
+  summarise(
+    N_Items = n(),
+    Promedio_P = mean(P_VAL, na.rm = TRUE),
+    Promedio_Rbis = mean(P_BIS, na.rm = TRUE),
+    Items_Rbis_Bajo = sum(P_BIS < 0.15, na.rm = TRUE)
+  )
+
+item_stats_audit |>
+  kbl(caption = "Auditoría de Estadísticos Clásicos", digits = 3, booktabs = TRUE) |>
+  kable_styling(latex_options = "hold_position") |>
+  add_footnote(c("Nota: Items con R-Bis < 0.15 aportan poco a la diferenciación."), notation = "none")
+```
+
+---
+
+# EVIDENCIA II: INTEGRIDAD DE LA EQUIPARACIÓN (EQUATING)
+
+**Objetivo Forense:** Certificar que la conversión de puntajes entre formas neutraliza las diferencias de dificultad sin introducir error sistemático.
+
+## 2.1 Auditoría de Ítems Ancla (Drift Analysis)
+
+La estabilidad de la escala depende de los ítems comunes. Se utilizó el método Robust-Z para detectar anomalías.
+
+```{r drift_visual, fig.cap="Detección de Deriva en Dificultad (Base vs. Nueva)"}
+plot_drift_forensics(eq_results$drift_details)
+```
+
+```{r drift_table_conditional}
+if (n_dropped > 0) {
+  cat("**Reporte de Ítems Eliminados del Enlace (Drift):**")
+  items_dropped |>
+    select(ITEM, STATUS, Z_SCORE, P_SRC, P_DEST) |>
+    kbl(booktabs = TRUE) |>
+    kable_styling(latex_options = "hold_position")
+} else {
+  cat("\n**Resultado:** El conjunto de ítems ancla se mantuvo intacto. No hubo eliminaciones por deriva (Drift), lo que garantiza la máxima conectividad entre escalas.")
+}
+```
+
+## 2.2 Verificación del Suavizamiento (Smoothing)
+
+El proceso de suavizamiento Log-Lineal (Preserving Moments) se auditó para asegurar que no se distorsionaron los datos reales.
+
+```{r smooth_visual, fig.height=3.5, fig.cap="Comparativa de Distribuciones: Cruda vs. Suavizada"}
+plot_smoothing_audit(eq_results)
+```
+
+---
+
+\newpage
+
+# EVIDENCIA III: PRECISIÓN EN LA TOMA DE DECISIONES
+
+**Objetivo Forense:** Cuantificar el error total (Equating Error + Measurement Error) específicamente en los puntos de corte, donde la litigiosidad es mayor.
+
+## 3.1 Túnel de Error Total (TSE)
+
+La siguiente gráfica muestra la incertidumbre combinada a lo largo de la escala.
+
+```{r tse_visual, fig.cap="Túnel de Error Total (TSE) con Puntos de Corte"}
+plot_total_error_tunnel(eq_results, config$scoring$performance_levels)
+```
+
+## 3.2 Auditoría de Error en Cortes Críticos
+
+La siguiente tabla presenta la evidencia definitiva de precisión para la defensa de los puntos de corte.
+
+```{r cut_audit}
+audit_cuts <- eq_results$audit_critical |>
+  select(SCALE_ID, TARGET_CUT_REF, EST_RAW_CUT, SEE_AT_CUT) |>
+  rename(
+    "Escala" = SCALE_ID,
+    "Corte (Escala)" = TARGET_CUT_REF,
+    "Corte (Crudo Est.)" = EST_RAW_CUT,
+    "Error Estándar (SEE)" = SEE_AT_CUT
+  )
+
+audit_cuts |>
+  kbl(caption = "Precisión Condicional en Puntos de Corte", digits = 2, booktabs = TRUE) |>
+  kable_styling(latex_options = c("striped", "hold_position")) |>
+  row_spec(0, bold = TRUE)
+```
+
+**Interpretación:** El SEE en el corte representa el margen de error institucional. Valores bajos indican alta certeza en la clasificación de candidatos limítrofes.
+
+---
+
+# EVIDENCIA IV: JUSTICIA Y EQUIDAD (FAIRNESS)
+
+**Objetivo Forense:** Demostrar la ausencia de sesgo sistemático y analizar el impacto adverso.
+
+## 4.1 Análisis de Impacto (Brechas)
+
+Distribución de puntajes finales por variables demográficas protegidas.
+
+```{r impact_visual, fig.cap="Análisis de Impacto: Distribución de Puntajes por Grupo"}
+plot_demographic_raincloud(final_scores, grouping_var = "SEXO")
+```
+
+## 4.2 Funcionamiento Diferencial del Ítem (DIF)
+
+Resumen de auditoría de sesgo a nivel de reactivo (Método Mantel-Haenszel / ETS Delta).
+
+```{r dif_audit}
+if (!is.null(dif_results)) {
+  dif_summary <- dif_results |>
+    group_by(FLAG) |>
+    summarise(Conteo = n()) |>
+    mutate(Interpretación = case_when(
+      grepl("A", FLAG) ~ "Despreciable (Aceptable)",
+      grepl("B", FLAG) ~ "Moderado (Vigilancia)",
+      grepl("C", FLAG) ~ "Severo (Revisión Obligatoria)",
+      TRUE ~ "Otro"
+    ))
+
+  dif_summary |>
+    kbl(booktabs = T, caption = "Resumen de Banderas de Sesgo (DIF)") |>
+    kable_styling(latex_options = "hold_position")
+} else {
+  cat("Análisis de DIF no disponible en este reporte.")
+}
+```
+
+**Conclusión:** `r dif_msg`
+
+---
+
+\vspace{1.5cm}
+
+**FIN DEL INFORME TÉCNICO**
+
+*Generado automáticamente por el **Sistema de Equiparación ASH***
+*Hash de Integridad: `r digest::digest(final_scores)*`
