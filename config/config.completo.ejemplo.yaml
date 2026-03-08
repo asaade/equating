@@ -1,0 +1,215 @@
+#==============================================================================
+# CONFIGURACIÓN UNIFICADA DEL PIPELINE PSICOMÉTRICO (v2026.A)
+#==============================================================================
+
+#------------------------------------------------------------------------------
+# 1. PROYECTO Y ORQUESTACIÓN
+#------------------------------------------------------------------------------
+
+project:
+    name: "EXAMEN_NACIONAL_2025"
+    output_dir: "./output"
+
+system:
+    log_dir: "./logs"
+    reference_form: "FORMA_01"
+    seed: 12345
+    archive_output: true
+    use_parallel: true
+    n_cores: 6
+    parallel_cores_offset: 6
+
+#------------------------------------------------------------------------------
+# 2. RUTAS DE ENTRADA Y EXCLUSIONES
+#------------------------------------------------------------------------------
+
+files:
+    dat: "data/input/v_final_respuestas.dat"
+    metadata: "data/input/v_final_metadata.csv"
+    attributes: "data/input/demographics.csv"
+
+exclusions:
+    enabled: false
+    items: [] # Lista de ITEM_ID a omitir
+
+#------------------------------------------------------------------------------
+# 3. ESPECIFICACIONES TÉCNICAS DEL DAT
+#------------------------------------------------------------------------------
+
+specs:
+    len_fisica: 150 # Longitud total del registro
+
+data_structure:
+    item_width: 1
+    item_prefix: "P_"
+    header:
+    - { name: "ID",    width: 9, type: "c" }
+    - { name: "SKIP",  width: 1, type: "_" } # Ignorar columna
+    - { name: "FORMA", width: 2, type: "c" }
+
+flags:
+    min_resp_person: 10 # Mínimo de respuestas para no descartar caso
+
+#------------------------------------------------------------------------------
+# 4. DISEÑO DE ENLACE (FORMAS)
+#------------------------------------------------------------------------------
+
+forms:
+    FORMA_01:
+        codes: ["01", "1"]
+        csv_col: "POS_1"
+    FORMA_02:
+        codes: ["02", "2"]
+        csv_col: "POS_2"
+
+#------------------------------------------------------------------------------
+# 5. MOTOR PSICOMÉTRICO (IRT/MIRT)
+#------------------------------------------------------------------------------
+
+mirt:
+    model: "3PL"
+    method: "EM"
+    cycles: 2000
+    quadpts: 61
+    tol: 0.0001
+    drift_analysis: true
+    compute_m2: false
+    compute_q3: true
+    constraints:
+        fix_guessing: true
+        guessing_value: 0.2
+
+#------------------------------------------------------------------------------
+# 6. EQUATING Y ANCLAJE
+#------------------------------------------------------------------------------
+
+equating:
+    method: "frequency estimation" # tucker, levine, chained, etc.
+    smoothing_metric: "BIC"
+    boot_reps: 350
+    min_anchor_cor: 0.70
+    preferred_anchor_cor: 0.85
+    min_anchor_items: 12
+    preferred_anchor_items: 20
+    var_ratio_tolerance: 1.25
+
+    weight_strategy: "PROPORTIONAL"
+    gatekeeper_enabled: true
+    cv_folds: 5
+    thresholds:
+        anchor_correlation: 0.70
+
+historical_anchoring:
+    enabled: true
+    irt_parameters_file: "data/input/historical_irt_params.csv"
+    ctt_equating_table: "data/input/historical_ctt_equating.csv"
+
+#------------------------------------------------------------------------------
+# 7. ESCALAMIENTO Y CALIFICACIÓN (SCORING)
+#------------------------------------------------------------------------------
+
+scoring:
+    method: "PIECEWISE"
+    source: "IRT"
+    include_subscores: false
+    subscore_max: 5
+    performance_levels:
+    - min_score: -4.0
+      label: "Insuficiente"
+      scaled_score: 700
+    - min_score: 0.0
+      label: "Satisfactorio"
+      scaled_score: 1000
+    - min_score: 1.69
+      label: "Sobresaliente"
+      scaled_score: 1150
+    - max_scaled_score: 1300
+
+production_scoring:
+    score_all_population: false
+    output_file: "Poblacion_Total_Calificada.csv"
+
+#------------------------------------------------------------------------------
+# 8. CONTROL DE CALIDAD Y UMBRALES (THRESHOLDS)
+#------------------------------------------------------------------------------
+
+thresholds:
+    ctt_p_val_min: 0.05
+    ctt_p_val_max: 0.95
+    ctt_pbis_min: 0.15
+    ctt_distractor_max_pbis: 0.05
+    ctt_alpha: 0.7
+    variance_explained: 0.2
+
+limits:
+    critical_min_n: 150
+    fail_fast: true
+    numeric_tolerance: 1e-05
+
+anchor:
+    min_p: 0.2
+    max_p: 0.9
+    min_sd: 0.15
+    min_keep: 10
+    rlm_min_n: 50
+    max_iter: 5
+    rlm_maxit: 20
+    mad_constant: 1.4826
+    epsilon: 0.0001
+    min_items_cor: 10
+    strict_z: 2.5
+    z_threshold: 3.0
+    logit_clamp_min: 0.001
+    logit_clamp_max: 0.999
+    min_common_items_topology: 10
+
+#------------------------------------------------------------------------------
+# 9. SUAVIZADO Y VALIDACIÓN GLOBAL (QC)
+#------------------------------------------------------------------------------
+
+smoothing:
+    max_iter: 200
+    ic_tolerance: 2.0
+    wiggle_density_max: 0.1
+    max_skew_diff: 0.5
+    max_kurt_diff: 1.0
+    corr_drop_max: 0.05
+    bias_mean_max: 0.05
+    bias_sd_max: 0.1
+    bias_sd_pct_max: 0.02
+
+qc:
+    pava_max_adj: 0.5
+    pava_stress_max: 0.1
+    max_divergence_pct: 0.15
+    sparsity_max: 0.4
+
+cleaning:
+    clean_max_na_pct: 0.4
+    clean_flat_patterns: true
+    max_invariant: 15
+
+#------------------------------------------------------------------------------
+# 10. ANÁLISIS AVANZADO (DIF, NETWORK, TESTLETS)
+#------------------------------------------------------------------------------
+
+dif:
+    enabled: true
+    group_col: "SEXO"
+    reference_group: "F"
+    focal_group: "M"
+
+network:
+    edge_base_cost: 0.5
+    min_correlation: 0.70
+    max_sample_cap: 1500
+    cor_power: 2
+    extrap_buffer: 0.5
+    max_anchor_smd: 0.5
+    time_lag_cost: 0.10
+    context_mismatch_cost: 0.20
+
+testlets:
+    enabled: false
+    groups:
+        LECTURA_01: ["IT_01", "IT_02", "IT_03"]
