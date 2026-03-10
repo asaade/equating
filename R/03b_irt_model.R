@@ -350,23 +350,8 @@ generate_irt_scores <- function(mod, irt_matrix, source_df, config) {
 # SECCIÓN 5: DIAGNÓSTICOS AVANZADOS (FIT INDICES & RESIDUALS)
 # ==============================================================================
 
-generate_irt_diagnostics <- function(mod, config) {
-  debug("Generando diagnósticos IRT extendidos...")
-
-  # 1. Tabla de Ajuste de Ítems (Fit Statistics)
-  # Estrategia: Cálculo Manual de Residuos (Robustez total ante NAs/Sparse)
-  # Se ha eliminado S_X2 debido a incompatibilidad con matrices dispersas.
-
-  scores <- mirt::fscores(mod, method = "EAP", full.scores = TRUE, verbose = FALSE)
-  theta <- scores[, 1]
-  theta_mat <- matrix(theta, ncol = 1)
-  data_mat <- mod@Data$data
-  items <- colnames(data_mat)
+.extract_item_fit_stats <- function(mod, items, data_mat, Ks, theta_mat, P_all) {
   item_fit_list <- list()
-
-  # Precompute all probabilities and categories
-  P_all <- mirt::probtrace(mod, theta_mat)
-  Ks <- mod@Data$K
   col_idx <- 1
 
   for (i in seq_along(items)) {
@@ -404,15 +389,17 @@ generate_irt_diagnostics <- function(mod, config) {
       Outfit_MSQ = round(mean(std_res_sq), 3)
     )
   }
-  fit_df <- do.call(rbind, item_fit_list)
+  return(do.call(rbind, item_fit_list))
+}
 
-  # 2. Criterios de Información (AIC, BIC, SABIC)
-  fit_indices <- data.frame(
+.extract_information_criteria <- function(mod) {
+  data.frame(
     Index = c("LogLik", "AIC", "BIC", "SABIC"),
     Value = c(mod@Fit$logLik, mod@Fit$AIC, mod@Fit$BIC, mod@Fit$SABIC)
   )
+}
 
-  # 3. Independencia Local (Q3) y Global RMSR Proxy
+.extract_local_independence <- function(mod, data_mat, Ks, P_all, config) {
   local_dep <- NULL
   global_rmsr_proxy <- NA
 
@@ -472,8 +459,10 @@ generate_irt_diagnostics <- function(mod, config) {
       }
     )
   }
+  return(list(local_dep = local_dep, global_rmsr_proxy = global_rmsr_proxy))
+}
 
-  # 4. Bondad de Ajuste Global (M2) con Fallback a SRMSR Proxy
+.extract_global_fit <- function(mod, global_rmsr_proxy, config) {
   global_fit <- NULL
   if (isTRUE(config$mirt$diagnostics$compute_m2 %||% FALSE)) {
     debug("  > Calculando M2 Statistic (Global Fit)...")
@@ -497,19 +486,22 @@ generate_irt_diagnostics <- function(mod, config) {
       global_fit <- data.frame(Metric = "SRMSR_Proxy_Q3", Value = round(global_rmsr_proxy, 4))
     }
   }
+  return(global_fit)
+}
 
-  # 5. TIF & CSEM
+.extract_tif_csem <- function(mod) {
   theta_grid <- matrix(seq(-3, 3, by = 0.5), ncol = 1)
   info_vals <- mirt::testdebug(mod, theta_grid)
   csem_vals <- 1 / sqrt(info_vals)
 
-  tif_df <- data.frame(
+  data.frame(
     Theta = theta_grid,
     Information = round(info_vals, 3),
     CSEM = round(csem_vals, 3)
   )
+}
 
-  # 6. Varianza Explicada
+.extract_explained_variance <- function(mod) {
   varexp_df <- NULL
   tryCatch(
     {
@@ -526,16 +518,53 @@ generate_irt_diagnostics <- function(mod, config) {
     },
     error = function(e) NULL
   )
+  return(varexp_df)
+}
 
-  # Dimensionality
+.extract_dimensionality_stats <- function(mod) {
   cor_mat <- suppressWarnings(cor(mod@Data$data, use = "pairwise.complete.obs"))
   cor_mat[is.na(cor_mat)] <- 0
   evals <- eigen(cor_mat, only.values = TRUE)$values
-  dim_df <- if (length(evals) >= 2) {
+  if (length(evals) >= 2) {
     data.frame(Metric = c("Eigen_1", "Eigen_2", "Ratio_1_2"), Value = c(evals[1], evals[2], evals[1] / evals[2]))
   } else {
     NULL
   }
+}
+
+generate_irt_diagnostics <- function(mod, config) {
+  debug("Generando diagnósticos IRT extendidos...")
+
+  # Precompute essential shared objects
+  scores <- mirt::fscores(mod, method = "EAP", full.scores = TRUE, verbose = FALSE)
+  theta_mat <- matrix(scores[, 1], ncol = 1)
+  data_mat <- mod@Data$data
+  items <- colnames(data_mat)
+  Ks <- mod@Data$K
+  P_all <- mirt::probtrace(mod, theta_mat)
+
+  # 1. Tabla de Ajuste de Ítems (Fit Statistics)
+  fit_df <- .extract_item_fit_stats(mod, items, data_mat, Ks, theta_mat, P_all)
+
+  # 2. Criterios de Información (AIC, BIC, SABIC)
+  fit_indices <- .extract_information_criteria(mod)
+
+  # 3. Independencia Local (Q3) y Global RMSR Proxy
+  local_results <- .extract_local_independence(mod, data_mat, Ks, P_all, config)
+  local_dep <- local_results$local_dep
+  global_rmsr_proxy <- local_results$global_rmsr_proxy
+
+  # 4. Bondad de Ajuste Global (M2) con Fallback a SRMSR Proxy
+  global_fit <- .extract_global_fit(mod, global_rmsr_proxy, config)
+
+  # 5. TIF & CSEM
+  tif_df <- .extract_tif_csem(mod)
+
+  # 6. Varianza Explicada
+  varexp_df <- .extract_explained_variance(mod)
+
+  # 7. Dimensionality
+  dim_df <- .extract_dimensionality_stats(mod)
 
   list(
     fit_statistics = fit_df,
