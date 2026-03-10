@@ -201,26 +201,48 @@ plot_forensic_item_trace <- function(ctt_results, item_id, flag_reason = "") {
 # 4. GRÁFICA SCREE CALCULADA (DATA DRIVEN)
 # ==============================================================================
 
-plot_calculated_scree <- function(calib_df) {
+plot_calculated_scree <- function(calib_df, ctt_results = NULL, config = NULL) {
   if (is.null(calib_df)) {
     return(NULL)
   }
 
   # Detectar columnas de ítems (asumiendo que las columnas de metadatos son fijas o pocas)
-  # Excluir columnas ID, FORMA y otras metadatas conocidas (TODO: Identificar otras variables)
-  meta_cols <- c("ID", "FORMA", "SEXO", "REGION", "Score_Final", "Nivel")
+  # Excluir columnas ID, FORMA y otras metadatas conocidas
+  meta_cols <- c(
+    "ID", "PERSON_ID", "IDENTIFICADOR", "FORMA", "SEXO", "GENDER", "SEX",
+    "REGION", "ZONA", "UBICACION", "LOCATION", "PROVINCIA",
+    "Score_Final", "SCORE", "TOTAL", "CASE", "CLUSTER", "Nivel"
+  )
   forms <- unique(calib_df$FORMA)
   plot_data_list <- list()
 
   for (frm in forms) {
     form_data <- calib_df |> dplyr::filter(FORMA == frm)
 
-    # Identificar items: columnas numéricas que no son ID/FORMA
-    item_cols <- form_data |>
-      dplyr::select(where(is.numeric)) |>
-      names()
+    # Identificar items:
+    item_cols <- NULL
 
-    item_cols <- setdiff(item_cols, meta_cols)
+    # 1. Prioridad: Usar items ya identificados por el motor CTT si están disponibles
+    if (!is.null(ctt_results) && !is.null(ctt_results$items)) {
+      item_cols <- intersect(names(form_data), ctt_results$items)
+    }
+
+    # 2. Fallback 1: Usar prefijo de configuración si está disponible
+    if (is.null(item_cols) || length(item_cols) == 0) {
+      pfx <- config$specs$data_structure$item_prefix
+      if (!is.null(pfx)) {
+        pos_pattern <- paste0("^", pfx, "[0-9]+$")
+        item_cols <- grep(pos_pattern, names(form_data), value = TRUE)
+      }
+    }
+
+    # 3. Fallback 2: Lógica actual mejorada con meta_cols extendido
+    if (is.null(item_cols) || length(item_cols) == 0) {
+      item_cols <- form_data |>
+        dplyr::select(where(is.numeric)) |>
+        names()
+      item_cols <- setdiff(item_cols, meta_cols)
+    }
 
     if (length(item_cols) < 3) next # Necesitamos al menos 3 items
 
@@ -295,7 +317,7 @@ export_module_a_structural <- function(ctt_results, calib_df, config, base_dir) 
   if (!is.null(calib_df)) {
     execute_safely(
       expr = {
-        p_scree_calc <- plot_calculated_scree(calib_df)
+        p_scree_calc <- plot_calculated_scree(calib_df, ctt_results, config)
         if (!is.null(p_scree_calc)) {
           save_plot_safe(p_scree_calc, file.path(base_dir, "A01b_Dimensionality_Scree_Calculated.pdf"), width = 8, height = 6)
         }
