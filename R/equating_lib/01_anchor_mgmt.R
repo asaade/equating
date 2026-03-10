@@ -42,34 +42,16 @@ get_item_stats <- function(df, items) {
 # 2. REFINAMIENTO DE ANCLAS
 # -----------------------------------------------------------------------------
 
-refine_anchor <- function(df_src, df_dest, items, config, strictness = TRUE, min_keep_req = 4) {
-  # --- Validación Inicial ---
-  available_items <- intersect(items, intersect(names(df_src), names(df_dest)))
-
-  if (length(available_items) < min_keep_req) {
-    return(NULL)
-  }
-
-  current <- available_items
+.apply_ctt_filter <- function(df_src, df_dest, current, config, audit, min_keep_req) {
   th <- config$thresholds
-
   # Parámetros CTT
   p_min <- if (!is.null(th$ctt_p_val_min)) th$ctt_p_val_min[1] else 0.02
   p_max <- if (!is.null(th$ctt_p_val_max)) th$ctt_p_val_max[1] else 0.98
   sd_min <- 0.15
 
-  audit <- data.frame(
-    ITEM = current, STATUS = "KEPT", REASON = "OK",
-    P_SRC = NA_real_, P_DEST = NA_real_, Z_SCORE = NA_real_,
-    stringsAsFactors = FALSE
-  )
-  rownames(audit) <- current
-
-  # --- FASE 1: Filtrado CTT ---
   s1 <- get_item_stats(df_src, current)
   s2 <- get_item_stats(df_dest, current)
 
-  # Si get_item_stats devuelve NULL o faltan items en la respuesta, ajustamos 'current'
   if (is.null(s1) || is.null(s2)) {
     return(NULL)
   }
@@ -82,7 +64,7 @@ refine_anchor <- function(df_src, df_dest, items, config, strictness = TRUE, min
     return(NULL)
   }
 
-  tryCatch(
+  try_res <- tryCatch(
     {
       audit[current, "P_SRC"] <- round(s1$p[current], 4)
       audit[current, "P_DEST"] <- round(s2$p[current], 4)
@@ -98,17 +80,20 @@ refine_anchor <- function(df_src, df_dest, items, config, strictness = TRUE, min
         current <- setdiff(current, dropped)
         audit[dropped, c("STATUS", "REASON")] <- c("DROPPED", "CTT_THRESHOLD")
       }
+      list(current = current, audit = audit)
     },
     error = function(e) {
       return(NULL)
     }
   )
 
-  if (length(current) < min_keep_req) {
+  if (is.null(try_res) || length(try_res$current) < min_keep_req) {
     return(NULL)
   }
+  return(try_res)
+}
 
-  # --- FASE 2: Drift Robust (Iterativo) ---
+.apply_drift_filter <- function(df_src, df_dest, current, audit, strictness, min_keep_req) {
   min_n_sample <- min(nrow(df_src), nrow(df_dest))
   use_robust <- (min_n_sample >= 50 && length(current) > 5)
   max_iter <- 3
@@ -175,6 +160,37 @@ refine_anchor <- function(df_src, df_dest, items, config, strictness = TRUE, min
       break
     }
   }
+  list(current = current, audit = audit)
+}
+
+refine_anchor <- function(df_src, df_dest, items, config, strictness = TRUE, min_keep_req = 4) {
+  # --- Validación Inicial ---
+  available_items <- intersect(items, intersect(names(df_src), names(df_dest)))
+
+  if (length(available_items) < min_keep_req) {
+    return(NULL)
+  }
+
+  current <- available_items
+  audit <- data.frame(
+    ITEM = current, STATUS = "KEPT", REASON = "OK",
+    P_SRC = NA_real_, P_DEST = NA_real_, Z_SCORE = NA_real_,
+    stringsAsFactors = FALSE
+  )
+  rownames(audit) <- current
+
+  # --- FASE 1: Filtrado CTT ---
+  ctt_res <- .apply_ctt_filter(df_src, df_dest, current, config, audit, min_keep_req)
+  if (is.null(ctt_res)) {
+    return(NULL)
+  }
+  current <- ctt_res$current
+  audit <- ctt_res$audit
+
+  # --- FASE 2: Drift Robust (Iterativo) ---
+  drift_res <- .apply_drift_filter(df_src, df_dest, current, audit, strictness, min_keep_req)
+  current <- drift_res$current
+  audit <- drift_res$audit
 
   # --- SALIDA ---
   if (length(current) < min_keep_req) {
