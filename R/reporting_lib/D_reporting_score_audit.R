@@ -37,12 +37,12 @@ audit_score_impact <- function(final_scores, raw_dat = NULL, eq_results = NULL, 
   fs_cols <- names(final_scores)
   fs_cols_up <- toupper(fs_cols)
 
-  col_fs_id    <- fs_cols[na.omit(match(toupper(c("ID", "PERSON_ID", "IDENTIFICADOR")), fs_cols_up))[1]]
-  col_fs_form  <- fs_cols[na.omit(match(toupper(c("FORMA", "FORM", "COLECCIÓN")), fs_cols_up))[1]]
-  col_fs_raw   <- fs_cols[na.omit(match(toupper(c("Raw_Global_CTT", "RAW_SCORE", "SCORE_RAW", "PUNTAJE_CRUDO")), fs_cols_up))[1]]
-  col_fs_eq    <- fs_cols[na.omit(match(toupper(c("Eq_Global_CTT", "EQUATED_SCORE", "SCORE_EQ", "PUNTAJE_EQUIPARADO")), fs_cols_up))[1]]
-  col_fs_see   <- fs_cols[na.omit(match(toupper(c("SEE_Global", "SEE", "ERROR_ESTANDAR", "SEM")), fs_cols_up))[1]]
-  col_fs_level <- fs_cols[na.omit(match(toupper(c("Nivel", "LEVEL", "PERFORMANCE_LEVEL", "DESEMPEÑO")), fs_cols_up))[1]]
+  col_fs_id    <- fs_cols[na.omit(match(toupper(c("ID", "PERSON_ID", "IDENTIFICADOR")), fs_cols_up))][1]
+  col_fs_form  <- fs_cols[na.omit(match(toupper(c("FORMA", "FORM", "COLECCIÓN")), fs_cols_up))][1]
+  col_fs_raw   <- fs_cols[na.omit(match(toupper(c("Raw_Global_CTT", "RAW_SCORE", "SCORE_RAW", "PUNTAJE_CRUDO")), fs_cols_up))][1]
+  col_fs_eq    <- fs_cols[na.omit(match(toupper(c("Eq_Global_CTT", "EQUATED_SCORE", "SCORE_EQ", "PUNTAJE_EQUIPARADO")), fs_cols_up))][1]
+  col_fs_see   <- fs_cols[na.omit(match(toupper(c("SEE_Global", "SEE", "ERROR_ESTANDAR", "SEM")), fs_cols_up))][1]
+  col_fs_level <- fs_cols[na.omit(match(toupper(c("Nivel", "LEVEL", "PERFORMANCE_LEVEL", "DESEMPEÑO")), fs_cols_up))][1]
 
   out_dir <- file.path(base_dir)
   if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
@@ -98,16 +98,16 @@ audit_score_impact <- function(final_scores, raw_dat = NULL, eq_results = NULL, 
     col_names_up <- toupper(col_names)
 
     # Buscar etiqueta por prioridad
-    col_label <- col_names[na.omit(match(label_candidates, col_names_up))[1]]
+    col_label <- col_names[na.omit(match(label_candidates, col_names_up))][1]
 
     # Buscar valor por prioridad
-    col_value <- col_names[na.omit(match(value_candidates, col_names_up))[1]]
+    col_value <- col_names[na.omit(match(value_candidates, col_names_up))][1]
 
     # Buscar escala
-    col_scale <- col_names[na.omit(match(scale_candidates, col_names_up))[1]]
+    col_scale <- col_names[na.omit(match(scale_candidates, col_names_up))][1]
 
     # Buscar forma en cuts
-    col_form_cuts <- col_names[na.omit(match(form_candidates, col_names_up))[1]]
+    col_form_cuts <- col_names[na.omit(match(form_candidates, col_names_up))][1]
 
     if (!is.null(col_label) && !is.null(col_value) && !is.na(col_label) && !is.na(col_value)) {
       cat(paste0(pad_str("PUNTO DE CORTE", 25), pad_str("SCORE REQ.", 12), pad_str("APROBADOS (N)", 15), "TASA (%)\n"))
@@ -210,9 +210,9 @@ audit_score_impact <- function(final_scores, raw_dat = NULL, eq_results = NULL, 
     raw_cols_up <- toupper(raw_cols)
 
     # Identificar nombres reales de columnas prioritarias
-    col_id_raw  <- raw_cols[na.omit(match(toupper(c("ID", "PERSON_ID", "IDENTIFICADOR")), raw_cols_up))[1]]
-    col_sexo    <- raw_cols[na.omit(match(toupper(c("SEXO")), raw_cols_up))[1]]
-    col_region  <- raw_cols[na.omit(match(toupper(c("REGION")), raw_cols_up))[1]]
+    col_id_raw  <- raw_cols[na.omit(match(toupper(c("ID", "PERSON_ID", "IDENTIFICADOR")), raw_cols_up))][1]
+    col_sexo    <- raw_cols[na.omit(match(toupper(c("SEXO")), raw_cols_up))][1]
+    col_region  <- raw_cols[na.omit(match(toupper(c("REGION")), raw_cols_up))][1]
 
     # Unir datos demográficos (raw_dat) con puntuaciones (final_scores) usando ID
     # Aseguramos que ID sea del mismo tipo
