@@ -8,8 +8,8 @@
 # --- FUNCIONES AUXILIARES DE FORMATEO ---
 pad_str <- function(x, width, align = "left") {
   x <- as.character(x)
-  if (is.na(x) || length(x) == 0) x <- ""
-  if (nchar(x) > width) x <- substr(x, 1, width)
+  x[is.na(x)] <- ""
+  x <- substr(x, 1, width)
   if (align == "right") formatC(x, width = width, flag = "") else formatC(x, width = width, flag = "-")
 }
 
@@ -113,15 +113,14 @@ audit_item_quality <- function(ctt_results, dif_results, meta, base_dir, config)
 
   items_sorted <- items_df |> dplyr::arrange(P_BIS)
 
-  for (i in 1:nrow(items_sorted)) {
-    row <- items_sorted[i, ]
-    cat(paste0(
-      pad_str(row$ITEM, 15), pad_str(row$KEY, 5),
-      pad_str(sprintf("%.2f", row$P_VAL), 8),
-      pad_str(sprintf("%.2f", row$P_BIS), 8),
-      pad_str(row$STATUS_CODE, 10), "\n"
-    ))
-  }
+  cat(paste0(
+    pad_str(items_sorted$ITEM, 15),
+    pad_str(items_sorted$KEY, 5),
+    pad_str(sprintf("%.2f", items_sorted$P_VAL), 8),
+    pad_str(sprintf("%.2f", items_sorted$P_BIS), 8),
+    pad_str(items_sorted$STATUS_CODE, 10), "\n",
+    collapse = ""
+  ))
 
   # --- 5. ANÁLISIS DE DISTRACTORES (NUEVA SECCIÓN) ---
   print_section("3. ANÁLISIS DE DISTRACTORES (POSIBLES CLAVES MÚLTIPLES)")
@@ -151,21 +150,19 @@ audit_item_quality <- function(ctt_results, dif_results, meta, base_dir, config)
       ))
       cat(paste0(strrep("-", 60), "\n"))
 
-      for (i in 1:nrow(bad_distractors)) {
-        row <- bad_distractors[i, ]
+      bad_distractors <- bad_distractors |>
+        dplyr::mutate(
+          diag = ifelse(R_BIS_OPT > 0.15, "FATAL ERROR", "REVISAR CLAVE")
+        )
 
-        diag <- "REVISAR CLAVE"
-        # Si el distractor correlaciona más de 0.15, es un error grave (posible clave real)
-        if (row$R_BIS_OPT > 0.15) diag <- "FATAL ERROR"
-
-        cat(paste0(
-          pad_str(row$ITEM, 15),
-          pad_str(row$OPTION, 8),
-          pad_str(sprintf("%.3f", row$PROP), 10),
-          pad_str(sprintf("%.3f", row$R_BIS_OPT), 10),
-          diag, "\n"
-        ))
-      }
+      cat(paste0(
+        pad_str(bad_distractors$ITEM, 15),
+        pad_str(bad_distractors$OPTION, 8),
+        pad_str(sprintf("%.3f", bad_distractors$PROP), 10),
+        pad_str(sprintf("%.3f", bad_distractors$R_BIS_OPT), 10),
+        bad_distractors$diag, "\n",
+        collapse = ""
+      ))
     } else {
       cat(">> EXCELENTE: Ningún distractor muestra correlación positiva relevante con el puntaje total.\n")
     }
