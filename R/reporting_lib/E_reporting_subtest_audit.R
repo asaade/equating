@@ -8,9 +8,16 @@
 # --- FUNCIONES AUXILIARES ---
 pad_str <- function(x, width, align = "left") {
   x <- as.character(x)
-  if (is.na(x) || length(x) == 0) x <- ""
-  if (nchar(x) > width) x <- substr(x, 1, width)
-  if (align == "right") formatC(x, width = width, flag = "") else formatC(x, width = width, flag = "-")
+  x[is.na(x)] <- ""
+  if (any(nchar(x) > width)) {
+    long <- nchar(x) > width
+    x[long] <- substr(x[long], 1, width)
+  }
+  if (align == "right") {
+    formatC(x, width = width, flag = "")
+  } else {
+    formatC(x, width = width, flag = "-")
+  }
 }
 
 print_header <- function(title) {
@@ -51,18 +58,26 @@ analyze_item_quality <- function(ctt_stats, meta) {
   ))
   cat(paste0(strrep("-", 70), "\n"))
 
-  for (i in seq_len(nrow(sub_stats))) {
-    row <- sub_stats[i, ]
-    quality <- "OK"
-    if (row$Mean_Pbis < 0.20) quality <- "BAJA DISC."
-    if (row$Mean_Pval < 0.30) quality <- "MUY DIFÍCIL"
-    if (row$Mean_Pval > 0.85) quality <- "MUY FÁCIL"
+  if (nrow(sub_stats) > 0) {
+    sub_stats <- sub_stats |>
+      dplyr::mutate(
+        quality = dplyr::case_when(
+          Mean_Pval > 0.85 ~ "MUY FÁCIL",
+          Mean_Pval < 0.30 ~ "MUY DIFÍCIL",
+          Mean_Pbis < 0.20 ~ "BAJA DISC.",
+          TRUE ~ "OK"
+        )
+      )
 
-    cat(paste0(
-      pad_str(row$SUBTEST, 20), pad_str(row$N_Items, 6),
-      pad_str(sprintf("%.2f", row$Mean_Pval), 10), pad_str(sprintf("%.3f", row$Mean_Pbis), 10),
-      pad_str(row$Items_Low_Disc, 8), quality, "\n"
-    ))
+    lines <- paste0(
+      pad_str(sub_stats$SUBTEST, 20),
+      pad_str(sub_stats$N_Items, 6),
+      pad_str(sprintf("%.2f", sub_stats$Mean_Pval), 10),
+      pad_str(sprintf("%.3f", sub_stats$Mean_Pbis), 10),
+      pad_str(sub_stats$Items_Low_Disc, 8),
+      sub_stats$quality, "\n"
+    )
+    cat(paste(lines, collapse = ""))
   }
 }
 
@@ -102,27 +117,31 @@ analyze_equating_impact <- function(final_scores, raw_cols) {
     ))
     cat(paste0(strrep("-", 65), "\n"))
 
-    for (r_col in raw_cols) {
-      sub_name <- gsub("Raw_", "", r_col)
-      e_col <- paste0("Eq_", sub_name)
+    sub_names <- gsub("Raw_", "", raw_cols)
+    e_cols <- paste0("Eq_", sub_names)
+    valid_mask <- e_cols %in% names(final_scores)
 
-      if (e_col %in% names(final_scores)) {
-        mn_raw <- mean(final_scores[[r_col]], na.rm = TRUE)
-        mn_eq <- mean(final_scores[[e_col]], na.rm = TRUE)
-        delta <- mn_eq - mn_raw
+    if (any(valid_mask)) {
+      v_sub_names <- sub_names[valid_mask]
+      v_raw_cols <- raw_cols[valid_mask]
+      v_e_cols <- e_cols[valid_mask]
 
-        effect <- "-"
-        if (delta > 1.5) effect <- "BONIF."
-        if (delta < -1.5) effect <- "CASTIGO"
+      mn_raw <- vapply(v_raw_cols, function(c) mean(final_scores[[c]], na.rm = TRUE), numeric(1))
+      mn_eq <- vapply(v_e_cols, function(c) mean(final_scores[[c]], na.rm = TRUE), numeric(1))
+      delta <- mn_eq - mn_raw
 
-        cat(paste0(
-          pad_str(sub_name, 20),
-          pad_str(sprintf("%.1f", mn_raw), 10),
-          pad_str(sprintf("%.1f", mn_eq), 10),
-          pad_str(sprintf("%+.2f", delta), 10),
-          effect, "\n"
-        ))
-      }
+      effect <- rep("-", length(delta))
+      effect[delta > 1.5] <- "BONIF."
+      effect[delta < -1.5] <- "CASTIGO"
+
+      lines <- paste0(
+        pad_str(v_sub_names, 20),
+        pad_str(sprintf("%.1f", mn_raw), 10),
+        pad_str(sprintf("%.1f", mn_eq), 10),
+        pad_str(sprintf("%+.2f", delta), 10),
+        effect, "\n"
+      )
+      cat(paste(lines, collapse = ""))
     }
   } else {
     cat("No se detectaron columnas pareadas (Raw/Eq) para subtests.\n")
@@ -149,24 +168,23 @@ analyze_subtest_equity <- function(final_scores, raw_dat, raw_cols) {
         cat(paste0(pad_str("SUBTEST", 20), "DIFERENCIA MAX ENTRE GRUPOS (Puntos)\n"))
         cat(paste0(strrep("-", 60), "\n"))
 
-        for (r_col in raw_cols) {
-          sub_name <- gsub("Raw_", "", r_col)
-          e_col <- paste0("Eq_", sub_name)
-          target_col <- if (e_col %in% names(df_merge)) e_col else r_col
+        sub_names <- gsub("Raw_", "", raw_cols)
+        e_cols <- paste0("Eq_", sub_names)
+        target_cols <- ifelse(e_cols %in% names(df_merge), e_cols, raw_cols)
 
-          # Calcular medias por grupo
-          means_by_group <- tapply(df_merge[[target_col]], df_merge[[v]], mean, na.rm = TRUE)
-          diff_max <- max(means_by_group) - min(means_by_group)
+        diff_max <- vapply(target_cols, function(tc) {
+          means_by_group <- tapply(df_merge[[tc]], df_merge[[v]], mean, na.rm = TRUE)
+          max(means_by_group) - min(means_by_group)
+        }, numeric(1))
 
-          flag <- ""
-          if (diff_max > 5) flag <- "<! ALERTA" # Umbral arbitrario de 5 puntos
+        flags <- ifelse(diff_max > 5, "<! ALERTA", "")
 
-          cat(paste0(
-            pad_str(sub_name, 20),
-            pad_str(sprintf("%.2f", diff_max), 15),
-            flag, "\n"
-          ))
-        }
+        lines <- paste0(
+          pad_str(sub_names, 20),
+          pad_str(sprintf("%.2f", diff_max), 15),
+          flags, "\n"
+        )
+        cat(paste(lines, collapse = ""))
       }
     }
   }
@@ -182,26 +200,49 @@ analyze_linkage_quality <- function(eq_results, raw_cols) {
     ))
     cat(paste0(strrep("-", 50), "\n"))
 
-    subtests_to_check <- gsub("Raw_", "", raw_cols)
-    for (sub_name in subtests_to_check) {
-      topo_row <- eq_results$topology_edges |>
-        dplyr::filter(grepl(paste0("^", sub_name), SCALE)) |>
+    sub_names <- gsub("Raw_", "", raw_cols)
+
+    topo_data <- lapply(sub_names, function(sn) {
+      eq_results$topology_edges |>
+        dplyr::filter(grepl(paste0("^", sn), SCALE)) |>
         utils::head(1)
+    })
+    topo_df <- dplyr::bind_rows(topo_data)
 
-      if (nrow(topo_row) > 0) {
-        status <- "OK"
-        if (topo_row$R < 0.90) status <- "R BAJA"
-        if (topo_row$N_Anchor < 10) status <- "POCOS ANC"
+    if (nrow(topo_df) > 0) {
+      # Mapear de vuelta a sub_names (algunos podrían faltar en topo_df si filter falló)
+      # Pero bind_rows mantiene el orden si no hay nulos, sin embargo filter puede retornar 0 rows.
+      # Mejor reconstruir una tabla completa para reporte
+      report_data <- data.frame(SUBTEST = sub_names, stringsAsFactors = FALSE)
 
-        cat(paste0(
-          pad_str(sub_name, 20),
-          pad_str(topo_row$N_Anchor, 10),
-          pad_str(sprintf("%.3f", topo_row$R), 10),
-          status, "\n"
-        ))
-      } else {
-        cat(paste0(pad_str(sub_name, 20), "   (No aplica / Sin equating propio)\n"))
-      }
+      # Unir con topo_df usando una columna temporal de match
+      # O mejor, procesar fila por fila en el lapply y retornar un df con NAs
+      topo_list <- lapply(sub_names, function(sn) {
+        row <- eq_results$topology_edges |>
+          dplyr::filter(grepl(paste0("^", sn), SCALE)) |>
+          utils::head(1)
+        if (nrow(row) == 0) {
+          return(data.frame(SUBTEST = sn, N_Anchor = NA, R = NA, EXISTS = FALSE))
+        } else {
+          return(data.frame(SUBTEST = sn, N_Anchor = row$N_Anchor, R = row$R, EXISTS = TRUE))
+        }
+      })
+      report_df <- dplyr::bind_rows(topo_list)
+
+      report_df$status <- "OK"
+      report_df$status[!is.na(report_df$R) & report_df$R < 0.90] <- "R BAJA"
+      report_df$status[!is.na(report_df$N_Anchor) & report_df$N_Anchor < 10] <- "POCOS ANC"
+
+      lines <- ifelse(report_df$EXISTS,
+        paste0(
+          pad_str(report_df$SUBTEST, 20),
+          pad_str(report_df$N_Anchor, 10),
+          pad_str(sprintf("%.3f", report_df$R), 10),
+          report_df$status, "\n"
+        ),
+        paste0(pad_str(report_df$SUBTEST, 20), "   (No aplica / Sin equating propio)\n")
+      )
+      cat(paste(lines, collapse = ""))
     }
   } else {
     cat("Objeto 'eq_results' no disponible o sin topología detallada.\n")
