@@ -160,7 +160,7 @@ run_irt_calibration <- function(irt_data, config, historical_params = NULL) {
   method <- config$mirt$method %||% "EM"
   drift_threshold <- config$mirt$drift_threshold %||% 0.3
 
-  run_drift_check <- isTRUE(config$mirt$drift_analysis) || isTRUE(config$mirt$drift_analisis)
+  run_drift_check <- isTRUE(config$mirt$drift_analysis)
 
   debug(sprintf("Iniciando Proceso IRT [Modelo: %s | D=%.4f]", model_type, CONST_D))
 

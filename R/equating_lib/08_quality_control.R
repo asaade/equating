@@ -102,7 +102,7 @@ audit_identity_divergence <- function(concordance_df, config = NULL) {
   scale_len <- max(concordance_df$scale, na.rm = TRUE)
 
   threshold_pct <- if (exists("CONST_QC_MAX_DIVERGENCE_PCT")) CONST_QC_MAX_DIVERGENCE_PCT else 0.15
-  if (!is.null(config$qc$max_divergence)) threshold_pct <- config$qc$max_divergence
+  if (!is.null(config$qc$max_divergence_pct)) threshold_pct <- config$qc$max_divergence_pct
 
   limit_pts <- scale_len * threshold_pct
   risk_flag <- (max_abs_diff > limit_pts)

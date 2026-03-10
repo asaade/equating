@@ -1,6 +1,5 @@
 # R/00_config_defs.R
 # Revisado por Psicómetra Senior
-## TODO: Verificar que las variables se usan en el código y los nombres coinciden
 
 get_default_config <- function() {
   list(
@@ -8,9 +7,17 @@ get_default_config <- function() {
     # 0. ORQUESTACIÓN Y SISTEMA
     # -----------------------------------------------------------------------------
     system = list(
-      seed = 12345,
-      parallel_cores_offset = 6
+      use_parallel = FALSE,
+      n_cores = 6,
+      reference_form = NULL
     ),
+
+    sampling = list(
+      enabled = FALSE,
+      seed = 12345,
+      size_per_form = 1000
+    ),
+
     ### Análisis CTT
     thresholds = list(
       ctt_p_val_min = 0.05,
@@ -20,21 +27,40 @@ get_default_config <- function() {
       ctt_alpha = 0.7,
       variance_explained = 0.2
     ),
-    ### Análisi IRT
+
+    ### Análisis IRT
     mirt = list(
       model = "3PL",
       method = "EM",
       cycles = 2000,
       quadpts = 61,
       tol = 0.0001,
+      metric_constant = 1.0,
       drift_analysis = TRUE,
-      compute_m2 = FALSE,
-      compute_q3 = TRUE,
+      drift_threshold = 0.3,
+      diagnostics = list(
+        compute_m2 = FALSE,
+        compute_q3 = TRUE
+      ),
       constraints = list(
         fix_guessing = TRUE,
         guessing_value = 0.2
       )
     ),
+
+    scoring = list(
+      treat_na_as_zero = TRUE,
+      include_subscores = FALSE,
+      irt_max_theta = 4.0
+    ),
+
+    dif = list(
+      enabled = FALSE,
+      group_col = "SEXO",
+      reference_group = "H",
+      focal_group = "M"
+    ),
+
     # =============================================================================
     # 1. INTEGRIDAD DEL SISTEMA (System Limits)
     # =============================================================================
@@ -85,7 +111,10 @@ get_default_config <- function() {
       corr_drop_max = 0.05,
       bias_mean_max = 0.05,
       bias_sd_max = 0.10,
-      bias_sd_pct_max = 0.02
+      bias_sd_pct_max = 0.02,
+      bias_skew_max = 0.20,
+      bias_kurt_max = 0.40,
+      cv_folds = 5
     ),
 
     # =============================================================================
@@ -100,6 +129,8 @@ get_default_config <- function() {
       var_ratio_tolerance = 1.25,
       see_min_limit = 0.001,
       force_linear_models = FALSE,
+      hop_penalty = 0.25,
+      max_degree_override = NULL,
 
       # Fase 2: Estrategia
       weight_strategy = "PROPORTIONAL",
@@ -135,8 +166,8 @@ get_default_config <- function() {
     ),
 
     cleaning = list(
-      clean_max_na_pct = 0.40,
-      clean_flat_patterns = TRUE,
+      max_na_pct = 0.40,
+      remove_flat = TRUE,
       max_invariant = 15
     )
   )
