@@ -24,42 +24,67 @@ pad_str <- function(x, width, align = "left") {
 }
 
 fmt_num <- function(x, digits = 4, width = 8) {
-  sapply(x, function(val) {
-    if (is.null(val) || is.na(val) || !is.numeric(val)) {
-      return(pad_str("-", width, "right"))
-    }
-    txt <- sprintf(paste0("%.", digits, "f"), val)
-    pad_str(txt, width, "right")
-  })
+  if (length(x) == 0) return(character(0))
+  # Detectar valores no numéricos o NA de forma eficiente
+  invalid <- is.na(x) | !vapply(x, is.numeric, logical(1))
+
+  # Formatear todos (los invalid darán "NA" que luego sobreescribiremos)
+  txt <- sprintf(paste0("%.", digits, "f"), x)
+  res <- pad_str(txt, width, "right")
+
+  if (any(invalid)) {
+    res[invalid] <- pad_str("-", width, "right")
+  }
+  res
 }
 
-# Barra ASCII mejorada con soporte para rangos
+# --- VECTORIZED UTILS ---
+
+# Optimization rationale: draw_ascii_bar was previously scalar-based and called
+# via vapply, incurring significant overhead for each element. By refactoring it
+# to use native vectorized operations (pmin, pmax, ifelse, strrep), we leverage
+# R's internal efficiency for processing vectors, reducing both CPU time and
+# memory allocation overhead during report generation.
+
 draw_ascii_bar <- function(val, limit = 3, width = 10, center = FALSE) {
-  if (is.na(val)) {
-    return(pad_str("", width))
-  }
+  if (length(val) == 0) return(character(0))
+
+  res <- rep(pad_str("", width), length(val))
+  na_idx <- is.na(val)
+  if (all(na_idx)) return(res)
+
   eff_w <- width - 2
+  valid_v <- val[!na_idx]
+
   if (center) {
-    norm_val <- max(-1, min(1, val / limit))
+    norm_v <- pmax(-1, pmin(1, valid_v / limit))
     center_idx <- floor(eff_w / 2)
-    len <- floor(abs(norm_val) * (eff_w / 2))
-    chars <- strrep(" ", eff_w)
-    fill_char <- if (val < 0) "<" else ">"
-    if (abs(val) > limit) fill_char <- "!"
-    left <- center_idx - (if (val < 0) len else 0)
-    substr(chars, left, left + len) <- strrep(fill_char, len + 1)
-    substr(chars, center_idx, center_idx) <- "|"
-    return(paste0("[", chars, "]"))
+    len_v <- floor(abs(norm_v) * (eff_w / 2))
+
+    fill_char_v <- ifelse(valid_v < 0, "<", ">")
+    fill_char_v[abs(valid_v) > limit] <- "!"
+
+    chars_v <- rep(strrep(" ", eff_w), length(valid_v))
+    left_v <- center_idx - ifelse(valid_v < 0, len_v, 0)
+    right_v <- left_v + len_v
+
+    # Vectorized assignment to characters
+    substr(chars_v, left_v, right_v) <- strrep(fill_char_v, len_v + 1)
+
+    # Ensure center_idx is valid for substr (R is 1-based)
+    c_idx <- pmax(1, center_idx)
+    substr(chars_v, c_idx, c_idx) <- "|"
+
+    res[!na_idx] <- paste0("[", chars_v, "]")
   } else {
-    mag <- min(abs(val), limit) / limit
-    len <- round(mag * eff_w)
-    len <- max(0, min(len, eff_w))
-    char <- "#"
-    if (val > limit * 0.8) char <- "!"
-    bar <- strrep(char, len)
-    space <- strrep(" ", eff_w - len)
-    return(paste0("[", bar, space, "]"))
+    mag_v <- pmin(abs(valid_v), limit) / limit
+    len_v <- pmax(0, pmin(eff_w, round(mag_v * eff_w)))
+
+    char_v <- ifelse(valid_v > limit * 0.8, "!", "#")
+
+    res[!na_idx] <- paste0("[", strrep(char_v, len_v), strrep(" ", eff_w - len_v), "]")
   }
+  res
 }
 
 print_header <- function(title) {
@@ -100,7 +125,7 @@ audit_01_impact <- function(desc_raw, mom_eq) {
     delta <- mn_eq - desc_raw$Mean
     cohen_d <- ifelse(!is.na(delta) & desc_raw$SD > 0, delta / desc_raw$SD, NA_real_)
 
-    vis_d <- vapply(cohen_d, function(x) draw_ascii_bar(x, limit = 1.0, width = 14, center = TRUE), FUN.VALUE = character(1))
+    vis_d <- draw_ascii_bar(cohen_d, limit = 1.0, width = 14, center = TRUE)
 
     lines <- paste0(
       pad_str(frm, 12), fmt_num(desc_raw$N, 0, 6), " | ",
@@ -223,38 +248,38 @@ audit_04_params <- function(coeffs) {
   ))
   cat(paste0(strrep("-", 100), "\n"))
 
-  if (!is.null(coeffs)) {
-    for (i in 1:nrow(coeffs)) {
-      c_row <- coeffs[i, ]
+  if (!is.null(coeffs) && nrow(coeffs) > 0) {
+    # Extracción vectorial de datos
+    fam <- if (!is.null(coeffs$MODEL_FAMILY)) coeffs$MODEL_FAMILY else rep("LINEAR", nrow(coeffs))
+    wgt <- if (!is.null(coeffs$GAMMA)) coeffs$GAMMA else rep(NA_real_, nrow(coeffs))
+    slope <- coeffs$SLOPE
 
-      # Datos nuevos
-      fam <- if (!is.null(c_row$MODEL_FAMILY)) c_row$MODEL_FAMILY else "LINEAR"
-      wgt <- if (!is.null(c_row$GAMMA)) c_row$GAMMA else NA
-      slope <- c_row$SLOPE
+    # Diagnóstico Vectorizado
+    diag <- rep("OK", nrow(coeffs))
 
-      # Diagnóstico
-      diag <- "OK"
-      if (!is.na(slope)) {
-        if (slope < 0.85 || slope > 1.15) diag <- "SCALE WARPING"
-        if (slope < 0.70 || slope > 1.30) diag <- "EXTREME WARP"
-      }
-      # Diagnóstico especial para Synthetic
-      if (fam == "SYNTHETIC" && !is.na(wgt)) {
-        if (wgt < 0.2) diag <- "MOSTLY EQUI"
-        if (wgt > 0.8) diag <- "MOSTLY LIN"
-      }
+    # Lógica de Pendiente (Slope)
+    s_warp <- !is.na(slope) & (slope < 0.85 | slope > 1.15)
+    e_warp <- !is.na(slope) & (slope < 0.70 | slope > 1.30)
+    diag[s_warp] <- "SCALE WARPING"
+    diag[e_warp] <- "EXTREME WARP"
 
-      cat(paste0(
-        pad_str(c_row$LINK_SOURCE, 10), pad_str(c_row$LINK_TARGET, 10),
-        pad_str(substr(fam, 1, 13), 14),
-        fmt_num(slope, 3, 8),
-        fmt_num(c_row$INTERCEPT, 2, 8),
-        fmt_num(wgt, 2, 8),
-        fmt_num(c_row$ANCHOR_COR, 2, 6),
-        " | ", pad_str(diag, 15),
-        "\n"
-      ))
-    }
+    # Lógica para Synthetic
+    is_synth <- fam == "SYNTHETIC" & !is.na(wgt)
+    diag[is_synth & wgt < 0.2] <- "MOSTLY EQUI"
+    diag[is_synth & wgt > 0.8] <- "MOSTLY LIN"
+
+    # Construcción vectorial de líneas
+    lines <- paste0(
+      pad_str(coeffs$LINK_SOURCE, 10), pad_str(coeffs$LINK_TARGET, 10),
+      pad_str(substr(fam, 1, 13), 14),
+      fmt_num(slope, 3, 8),
+      fmt_num(coeffs$INTERCEPT, 2, 8),
+      fmt_num(wgt, 2, 8),
+      fmt_num(coeffs$ANCHOR_COR, 2, 6),
+      " | ", pad_str(diag, 15),
+      "\n"
+    )
+    cat(paste(lines, collapse = ""))
   }
 }
 
@@ -268,14 +293,12 @@ audit_05_drift <- function(drift) {
       pad_str("Z_SCORE", 8, "right"), pad_str("VISUAL_DRIFT", 14), "  REASON\n"
     ))
     cat(paste0(strrep("-", 100), "\n"))
-    for (i in 1:nrow(top_fails)) {
-      d <- top_fails[i, ]
-      vis_z <- draw_ascii_bar(d$Z_SCORE, limit = 3.5, width = 14, center = TRUE)
-      cat(paste0(
-        pad_str(d$LINK, 16), pad_str(rownames(d), 10), pad_str(d$STATUS, 8),
-        fmt_num(d$Z_SCORE, 2, 8), pad_str(vis_z, 14), "  ", d$REASON, "\n"
-      ))
-    }
+    vis_z <- draw_ascii_bar(top_fails$Z_SCORE, limit = 3.5, width = 14, center = TRUE)
+    lines <- paste0(
+      pad_str(top_fails$LINK, 16), pad_str(rownames(top_fails), 10), pad_str(top_fails$STATUS, 8),
+      fmt_num(top_fails$Z_SCORE, 2, 8), pad_str(vis_z, 14), "  ", top_fails$REASON, "\n"
+    )
+    cat(paste(lines, collapse = ""))
   } else {
     cat("  [INFO] No Drift data available.\n")
   }
@@ -308,23 +331,21 @@ audit_06_cuts <- function(crit_tab) {
     ))
     cat(paste0(strrep("-", 90), "\n"))
 
-    for (i in 1:nrow(crit_sorted)) {
-      r <- crit_sorted[i, ]
-      val_form <- as.character(r[[col_form]])
-      val_cut  <- as.numeric(r[[col_cut]])
-      val_eq   <- as.numeric(r[[col_eq]])
-      val_see  <- if (!is.na(col_see)) as.numeric(r[[col_see]]) else NA_real_
-      val_note <- if (!is.na(col_note)) as.character(r[[col_note]]) else "-"
+    val_form <- as.character(crit_sorted[[col_form]])
+    val_cut  <- as.numeric(crit_sorted[[col_cut]])
+    val_eq   <- as.numeric(crit_sorted[[col_eq]])
+    val_see  <- if (!is.na(col_see)) as.numeric(crit_sorted[[col_see]]) else rep(NA_real_, nrow(crit_sorted))
+    val_note <- if (!is.na(col_note)) as.character(crit_sorted[[col_note]]) else rep("-", nrow(crit_sorted))
 
-      lower <- val_eq - (1.96 * (val_see %||% 0))
-      upper <- val_eq + (1.96 * (val_see %||% 0))
-      ci_str <- if (!is.na(val_see)) sprintf("[%s - %s]", round(lower, 1), round(upper, 1)) else "N/A"
+    lower <- val_eq - (1.96 * ifelse(is.na(val_see), 0, val_see))
+    upper <- val_eq + (1.96 * ifelse(is.na(val_see), 0, val_see))
+    ci_str <- ifelse(!is.na(val_see), sprintf("[%s - %s]", round(lower, 1), round(upper, 1)), "N/A")
 
-      cat(paste0(
-        pad_str(val_form, 12), fmt_num(val_cut, 0, 6), fmt_num(val_eq, 2, 9),
-        fmt_num(val_see, 3, 8), pad_str(ci_str, 16, "right"), "   ", val_note, "\n"
-      ))
-    }
+    lines <- paste0(
+      pad_str(val_form, 12), fmt_num(val_cut, 0, 6), fmt_num(val_eq, 2, 9),
+      fmt_num(val_see, 3, 8), pad_str(ci_str, 16, "right"), "   ", val_note, "\n"
+    )
+    cat(paste(lines, collapse = ""))
   }
 }
 
