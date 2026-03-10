@@ -86,22 +86,16 @@ helper_get_cuts_irt <- function(config) {
 # ==============================================================================
 
 # A. MAPA DE WRIGHT AVANZADO (Diseño con Densidad Izq. / Rug Der.)
-render_wright_map_advanced <- function(scores_subset, b_params_subset, y_limits = c(-4, 4), label_quantiles = c(0.1, 0.9), cuts = NULL) {
-  # Filtrar personas dentro del rango visual
+prep_wright_map_data <- function(scores_subset, b_params_subset, y_limits, label_quantiles, cuts) {
   person_df_plot <- scores_subset %>% dplyr::filter(Theta > y_limits[1] & Theta < y_limits[2])
-  if (nrow(person_df_plot) == 0) {
-    return(NULL)
-  }
+  if (nrow(person_df_plot) == 0) return(NULL)
 
-  # Contar ítems fuera de rango (Alertas)
   n_high <- sum(b_params_subset$Difficulty >= y_limits[2])
   n_low <- sum(b_params_subset$Difficulty <= y_limits[1])
 
-  # Ítems visibles
   b_params_plot <- b_params_subset %>%
     dplyr::filter(Difficulty > y_limits[1], Difficulty < y_limits[2])
 
-  # Etiquetado inteligente de ítems (solo extremos para no saturar)
   if (nrow(b_params_plot) > 0) {
     q_low <- quantile(b_params_plot$Difficulty, label_quantiles[1])
     q_high <- quantile(b_params_plot$Difficulty, label_quantiles[2])
@@ -109,10 +103,29 @@ render_wright_map_advanced <- function(scores_subset, b_params_subset, y_limits 
       dplyr::mutate(label_item = Difficulty <= q_low | Difficulty >= q_high)
   }
 
+  cuts_df <- NULL
+  if (!is.null(cuts$theta) && length(cuts$theta) > 0) {
+    cuts_df <- data.frame(Value = cuts$theta, Label = cuts$labels) %>%
+      dplyr::filter(Value >= y_limits[1], Value <= y_limits[2])
+  }
+
+  return(list(
+    person_df = person_df_plot,
+    b_params = b_params_plot,
+    cuts_df = cuts_df,
+    n_high = n_high,
+    n_low = n_low
+  ))
+}
+
+render_wright_map_advanced <- function(scores_subset, b_params_subset, y_limits = c(-4, 4), label_quantiles = c(0.1, 0.9), cuts = NULL) {
+  data_prep <- prep_wright_map_data(scores_subset, b_params_subset, y_limits, label_quantiles, cuts)
+  if (is.null(data_prep)) return(NULL)
+
   p <- ggplot() +
     # 1. Densidad de Personas (Izquierda)
     geom_density(
-      data = person_df_plot, aes(y = Theta, x = -after_stat(density)),
+      data = data_prep$person_df, aes(y = Theta, x = -after_stat(density)),
       fill = COLORS_IRT$dens_fill, color = COLORS_IRT$line_main,
       alpha = 0.6, linewidth = 0.3
     ) +
@@ -121,14 +134,14 @@ render_wright_map_advanced <- function(scores_subset, b_params_subset, y_limits 
 
     # 3. Ítems (Rug Plot a la derecha)
     geom_segment(
-      data = b_params_plot,
+      data = data_prep$b_params,
       aes(x = 0.02, xend = 0.2, y = Difficulty, yend = Difficulty),
       color = COLORS_IRT$line_sec, alpha = 1, linewidth = 0.25
     ) +
 
     # 4. Etiquetas de Ítems
     geom_text_repel(
-      data = dplyr::filter(b_params_plot, label_item),
+      data = dplyr::filter(data_prep$b_params, label_item),
       aes(y = Difficulty, label = Item),
       x = 0.2, hjust = 0, size = 3, color = COLORS_IRT$line_sec, direction = "y",
       nudge_x = 0.15, xlim = c(0.25, 0.8),
@@ -153,45 +166,40 @@ render_wright_map_advanced <- function(scores_subset, b_params_subset, y_limits 
     coord_cartesian(ylim = y_limits, clip = "off")
 
   # 5. Líneas de Corte (Theta)
-  if (!is.null(cuts$theta) && length(cuts$theta) > 0) {
-    cuts_df <- data.frame(Value = cuts$theta, Label = cuts$labels) %>%
-      dplyr::filter(Value >= y_limits[1], Value <= y_limits[2])
-
-    if (nrow(cuts_df) > 0) {
-      p <- p +
-        geom_hline(
-          data = cuts_df, aes(yintercept = Value),
-          linetype = "dashed", color = COLORS_IRT$warning, linewidth = 0.4
-        ) +
-        geom_text(
-          data = cuts_df, aes(y = Value, label = Label),
-          x = -0.65, hjust = 0, vjust = -0.5,
-          color = COLORS_IRT$warning, size = 3, fontface = "italic"
-        )
-    }
+  if (!is.null(data_prep$cuts_df) && nrow(data_prep$cuts_df) > 0) {
+    p <- p +
+      geom_hline(
+        data = data_prep$cuts_df, aes(yintercept = Value),
+        linetype = "dashed", color = COLORS_IRT$warning, linewidth = 0.4
+      ) +
+      geom_text(
+        data = data_prep$cuts_df, aes(y = Value, label = Label),
+        x = -0.65, hjust = 0, vjust = -0.5,
+        color = COLORS_IRT$warning, size = 3, fontface = "italic"
+      )
   }
 
   # 6. Alertas de Ítems Ocultos
-  if (n_high > 0) {
+  if (data_prep$n_high > 0) {
     p <- p +
       annotate("segment",
         x = 0.07, xend = 0.07, y = y_limits[2], yend = y_limits[2] + 0.35,
         arrow = arrow(length = unit(0.15, "cm"), type = "closed"), color = COLORS_IRT$alert, linewidth = 0.6
       ) +
       annotate("text",
-        x = 0.07, y = y_limits[2] + 0.45, label = paste0(n_high, " ítems (High)"),
+        x = 0.07, y = y_limits[2] + 0.45, label = paste0(data_prep$n_high, " ítems (High)"),
         color = COLORS_IRT$alert, size = 2.8, fontface = "bold", vjust = 0
       )
   }
 
-  if (n_low > 0) {
+  if (data_prep$n_low > 0) {
     p <- p +
       annotate("segment",
         x = 0.07, xend = 0.07, y = y_limits[1], yend = y_limits[1] - 0.35,
         arrow = arrow(length = unit(0.15, "cm"), type = "closed"), color = COLORS_IRT$alert, linewidth = 0.6
       ) +
       annotate("text",
-        x = 0.07, y = y_limits[1] - 0.45, label = paste0(n_low, " ítems (Low)"),
+        x = 0.07, y = y_limits[1] - 0.45, label = paste0(data_prep$n_low, " ítems (Low)"),
         color = COLORS_IRT$alert, size = 2.8, fontface = "bold", vjust = 1
       )
   }
